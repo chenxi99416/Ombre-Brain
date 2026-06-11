@@ -1983,9 +1983,13 @@ if __name__ == "__main__":
         async def _start_telegram():
             await asyncio.sleep(5)
             await telegram_bot.start()
+            # Keep the loop alive so polling/push tasks continue running
+            while telegram_bot._running:
+                await asyncio.sleep(1)
 
         def _run_telegram():
             loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
             loop.run_until_complete(_start_telegram())
 
         if telegram_bot.enabled:
