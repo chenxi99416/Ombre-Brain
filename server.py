@@ -56,6 +56,7 @@ from dehydrator import Dehydrator
 from decay_engine import DecayEngine
 from embedding_engine import EmbeddingEngine
 from import_memory import ImportEngine
+from telegram_bot import TelegramBot
 from utils import load_config, setup_logging, strip_wikilinks, count_tokens_approx
 
 # --- Load config & init logging / 加载配置 & 初始化日志 ---
@@ -102,6 +103,7 @@ bucket_mgr = BucketManager(config, embedding_engine=embedding_engine)  # Bucket 
 dehydrator = Dehydrator(config)                      # Dehydrator / 脱水器
 decay_engine = DecayEngine(config, bucket_mgr)       # Decay engine / 衰减引擎
 import_engine = ImportEngine(config, bucket_mgr, dehydrator, embedding_engine)  # Import engine / 导入引擎
+telegram_bot = TelegramBot(config, bucket_mgr, dehydrator, decay_engine)       # Telegram bot / Telegram 机器人
 
 # --- Create MCP server instance / 创建 MCP 服务器实例 ---
 # host="0.0.0.0" so Docker container's SSE is externally reachable
@@ -483,6 +485,10 @@ async def _merge_or_create(
     except Exception:
         pass
     return bucket_id, False
+
+
+# --- Wire up merge function for Telegram bot ---
+telegram_bot.set_merge_fn(_merge_or_create)
 
 
 # =============================================================
@@ -1905,6 +1911,42 @@ async def api_system_status(request):
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
+# =============================================================
+# Telegram Bot API endpoints
+# Telegram Bot 配置接口
+# =============================================================
+@mcp.custom_route("/api/telegram/status", methods=["GET"])
+async def api_telegram_status(request):
+    from starlette.responses import JSONResponse
+    err = _require_auth(request)
+    if err: return err
+    return JSONResponse({
+        "enabled": telegram_bot.enabled,
+        "configured": telegram_bot.is_configured,
+        "chat_id": telegram_bot.chat_id or "",
+        "push_interval_hours": telegram_bot.push_interval_hours,
+        "running": telegram_bot._running,
+    })
+
+
+@mcp.custom_route("/api/telegram/send", methods=["POST"])
+async def api_telegram_send(request):
+    from starlette.responses import JSONResponse
+    err = _require_auth(request)
+    if err: return err
+    if not telegram_bot.is_configured:
+        return JSONResponse({"error": "Telegram not configured"}, status_code=400)
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "Invalid JSON"}, status_code=400)
+    text = body.get("text", "")
+    if not text:
+        return JSONResponse({"error": "Missing text"}, status_code=400)
+    ok = await telegram_bot.send_message(text)
+    return JSONResponse({"ok": ok})
+
+
 # --- Entry point / 启动入口 ---
 if __name__ == "__main__":
     transport = config.get("transport", "stdio")
@@ -1937,6 +1979,20 @@ if __name__ == "__main__":
 
         # --- Add CORS middleware so remote clients (Cloudflare Tunnel / ngrok) can connect ---
         # --- 添加 CORS 中间件，让远程客户端（Cloudflare Tunnel / ngrok）能正常连接 ---
+        # --- Start Telegram bot if configured ---
+        async def _start_telegram():
+            await asyncio.sleep(5)
+            await telegram_bot.start()
+
+        def _run_telegram():
+            loop = asyncio.new_event_loop()
+            loop.run_until_complete(_start_telegram())
+
+        if telegram_bot.enabled:
+            t_tg = threading.Thread(target=_run_telegram, daemon=True)
+            t_tg.start()
+            logger.info("Telegram bot thread started")
+
         if transport == "streamable-http":
             _app = mcp.streamable_http_app()
         else:
