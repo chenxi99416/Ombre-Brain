@@ -364,10 +364,21 @@ async def breath_hook(request):
             parts.append(summary)
             token_budget -= summary_tokens
 
-        if not parts:
+        handoff_section = ""
+        hpath = _handoff_path()
+        if os.path.exists(hpath):
+            try:
+                mtime = os.path.getmtime(hpath)
+                if time.time() - mtime < 86400:
+                    with open(hpath, "r", encoding="utf-8") as hf:
+                        handoff_section = "[Ombre Brain - Handoff]\n" + hf.read().strip() + "\n\n"
+            except Exception:
+                pass
+
+        if not parts and not handoff_section:
             await _fire_webhook("breath_hook", {"surfaced": 0})
             return PlainTextResponse("")
-        body_text = "[Ombre Brain - 记忆浮现]\n" + "\n---\n".join(parts)
+        body_text = handoff_section + "[Ombre Brain - 记忆浮现]\n" + "\n---\n".join(parts)
         await _fire_webhook("breath_hook", {"surfaced": len(parts), "chars": len(body_text)})
         return PlainTextResponse(body_text)
     except Exception as e:
@@ -411,6 +422,116 @@ async def dream_hook(request):
         return PlainTextResponse(body_text)
     except Exception as e:
         logger.warning(f"Dream hook failed: {e}")
+        return PlainTextResponse("")
+
+
+# =============================================================
+# /handoff-write endpoint: Write session handoff file
+# 写入会话交接文件，供下次 session 启动时快速恢复上下文
+# =============================================================
+def _handoff_path() -> str:
+    return os.path.join(config["buckets_dir"], ".handoff.md")
+
+
+@mcp.custom_route("/handoff-write", methods=["POST"])
+async def handoff_write(request):
+    from starlette.responses import JSONResponse
+    import datetime
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+
+    summary = body.get("summary", "")
+    emotional_state = body.get("emotional_state", "")
+    pending_tasks = body.get("pending_tasks", [])
+    preferences = body.get("preferences", [])
+
+    all_buckets = await bucket_mgr.list_all(include_archive=False)
+
+    pinned = [b for b in all_buckets if b["metadata"].get("pinned") or b["metadata"].get("protected")]
+    unresolved = [
+        b for b in all_buckets
+        if not b["metadata"].get("resolved", False)
+        and b["metadata"].get("type") not in ("permanent", "feel")
+        and not b["metadata"].get("pinned")
+        and not b["metadata"].get("protected")
+    ]
+    scored = sorted(unresolved, key=lambda b: decay_engine.calculate_score(b["metadata"]), reverse=True)
+
+    feels = [b for b in all_buckets if b["metadata"].get("type") == "feel"]
+    feels.sort(key=lambda b: b["metadata"].get("created", ""), reverse=True)
+
+    lines = [
+        "---",
+        f"written_at: \"{datetime.datetime.now(datetime.timezone.utc).isoformat()}\"",
+        "---",
+        "",
+    ]
+
+    if summary:
+        lines += ["## Session Summary", summary, ""]
+
+    if emotional_state:
+        lines += ["## Emotional State", emotional_state, ""]
+
+    if pinned:
+        lines += ["## Pinned Context"]
+        for b in pinned:
+            meta = b["metadata"]
+            name = meta.get("name", b["id"][:8])
+            lines.append(f"- [{b['id'][:8]}] {name}")
+        lines.append("")
+
+    if scored[:5]:
+        lines += ["## Active Unresolved (top 5)"]
+        for b in scored[:5]:
+            meta = b["metadata"]
+            name = meta.get("name", b["id"][:8])
+            score = decay_engine.calculate_score(meta)
+            lines.append(f"- [{b['id'][:8]}] {name} (score: {score:.2f})")
+        lines.append("")
+
+    if feels[:3]:
+        lines += ["## Recent Feels"]
+        for b in feels[:3]:
+            meta = b["metadata"]
+            created = meta.get("created", "")[:10]
+            lines.append(f"- ({created}) {strip_wikilinks(b['content'][:150])}")
+        lines.append("")
+
+    if pending_tasks:
+        lines += ["## Pending Tasks"]
+        for task in pending_tasks:
+            lines.append(f"- {task}")
+        lines.append("")
+
+    if preferences:
+        lines += ["## Noted Preferences"]
+        for pref in preferences:
+            lines.append(f"- {pref}")
+        lines.append("")
+
+    handoff_text = "\n".join(lines)
+    path = _handoff_path()
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(handoff_text)
+
+    logger.info(f"Handoff file written: {len(handoff_text)} chars")
+    return JSONResponse({"ok": True, "chars": len(handoff_text), "path": path})
+
+
+@mcp.custom_route("/handoff-read", methods=["GET"])
+async def handoff_read(request):
+    from starlette.responses import PlainTextResponse
+    path = _handoff_path()
+    if not os.path.exists(path):
+        return PlainTextResponse("")
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            content = f.read()
+        return PlainTextResponse(content)
+    except Exception:
         return PlainTextResponse("")
 
 
