@@ -1108,17 +1108,21 @@ async def grow(content: str) -> str:
                 "domain": ["未分类"], "valence": 0.5, "arousal": 0.3,
                 "tags": [], "suggested_name": "",
             }
-        result_name, is_merged = await _merge_or_create(
-            content=content.strip(),
-            tags=analysis.get("tags", []),
-            importance=analysis.get("importance", 5) if isinstance(analysis.get("importance"), int) else 5,
-            domain=analysis.get("domain", ["未分类"]),
-            valence=analysis.get("valence", 0.5),
-            arousal=analysis.get("arousal", 0.3),
-            name=analysis.get("suggested_name", ""),
-        )
-        action = "合并" if is_merged else "新建"
-        return f"⚠️拆分失败，已整条保存\n{action} → {result_name} | {','.join(analysis.get('domain', []))} V{analysis.get('valence', 0.5):.1f}/A{analysis.get('arousal', 0.3):.1f}"
+        try:
+            result_name, is_merged = await _merge_or_create(
+                content=content.strip(),
+                tags=analysis.get("tags", []),
+                importance=analysis.get("importance", 5) if isinstance(analysis.get("importance"), int) else 5,
+                domain=analysis.get("domain", ["未分类"]),
+                valence=analysis.get("valence", 0.5),
+                arousal=analysis.get("arousal", 0.3),
+                name=analysis.get("suggested_name", ""),
+            )
+            action = "合并" if is_merged else "新建"
+            return f"⚠️拆分失败，已整条保存\n{action} → {result_name} | {','.join(analysis.get('domain', []))} V{analysis.get('valence', 0.5):.1f}/A{analysis.get('arousal', 0.3):.1f}"
+        except Exception as e:
+            logger.error(f"grow fallback also failed / 回退保存也失败: {e}")
+            return f"⚠️拆分失败且回退保存也失败，请稍后用 hold 手动存储。原因: {e}"
 
     results = []
     created = 0
