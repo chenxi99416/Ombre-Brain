@@ -486,6 +486,7 @@ async def handoff_write(request):
     emotional_state = body.get("emotional_state", "")
     pending_tasks = body.get("pending_tasks", [])
     preferences = body.get("preferences", [])
+    tool_primer = body.get("tool_primer", [])
 
     all_buckets = await bucket_mgr.list_all(include_archive=False)
 
@@ -550,6 +551,16 @@ async def handoff_write(request):
         lines += ["## Noted Preferences"]
         for pref in preferences:
             lines.append(f"- {pref}")
+        lines.append("")
+
+    if tool_primer:
+        lines += ["## Tool Primer"]
+        lines.append("Recent tool usage examples (structure reference for new session):")
+        for tp in tool_primer[:3]:
+            tool_name = tp.get("tool", "unknown")
+            params_short = tp.get("params_summary", "")
+            result_short = tp.get("result_summary", "")
+            lines.append(f"- `{tool_name}({params_short})` → {result_short}")
         lines.append("")
 
     handoff_text = "\n".join(lines)
