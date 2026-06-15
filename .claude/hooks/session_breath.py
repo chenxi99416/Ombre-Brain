@@ -33,6 +33,9 @@ def main():
     # --- Step 2: Dream — digest recent memories ---
     _call_endpoint(base_url, "/dream-hook")
 
+    # --- Step 3: Feel — read previous reflections ---
+    _call_endpoint(base_url, "/feel-hook")
+
 
 def _call_endpoint(base_url, path):
     req = urllib.request.Request(
