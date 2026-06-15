@@ -56,6 +56,7 @@ from dehydrator import Dehydrator
 from decay_engine import DecayEngine
 from embedding_engine import EmbeddingEngine
 from import_memory import ImportEngine
+from telegram_bot import TelegramBot
 from utils import load_config, setup_logging, strip_wikilinks, count_tokens_approx
 
 # --- Load config & init logging / 加载配置 & 初始化日志 ---
@@ -102,6 +103,7 @@ bucket_mgr = BucketManager(config, embedding_engine=embedding_engine)  # Bucket 
 dehydrator = Dehydrator(config)                      # Dehydrator / 脱水器
 decay_engine = DecayEngine(config, bucket_mgr)       # Decay engine / 衰减引擎
 import_engine = ImportEngine(config, bucket_mgr, dehydrator, embedding_engine)  # Import engine / 导入引擎
+telegram_bot = TelegramBot(config, bucket_mgr, dehydrator, decay_engine)       # Telegram bot / Telegram 机器人
 
 # --- Create MCP server instance / 创建 MCP 服务器实例 ---
 # host="0.0.0.0" so Docker container's SSE is externally reachable
@@ -362,10 +364,21 @@ async def breath_hook(request):
             parts.append(summary)
             token_budget -= summary_tokens
 
-        if not parts:
+        handoff_section = ""
+        hpath = _handoff_path()
+        if os.path.exists(hpath):
+            try:
+                mtime = os.path.getmtime(hpath)
+                if time.time() - mtime < 86400:
+                    with open(hpath, "r", encoding="utf-8") as hf:
+                        handoff_section = "[Ombre Brain - Handoff]\n" + hf.read().strip() + "\n\n"
+            except Exception:
+                pass
+
+        if not parts and not handoff_section:
             await _fire_webhook("breath_hook", {"surfaced": 0})
             return PlainTextResponse("")
-        body_text = "[Ombre Brain - 记忆浮现]\n" + "\n---\n".join(parts)
+        body_text = handoff_section + "[Ombre Brain - 记忆浮现]\n" + "\n---\n".join(parts)
         await _fire_webhook("breath_hook", {"surfaced": len(parts), "chars": len(body_text)})
         return PlainTextResponse(body_text)
     except Exception as e:
@@ -409,6 +422,156 @@ async def dream_hook(request):
         return PlainTextResponse(body_text)
     except Exception as e:
         logger.warning(f"Dream hook failed: {e}")
+        return PlainTextResponse("")
+
+
+# =============================================================
+# /feel-hook endpoint: Dedicated hook for reading Feel entries
+# Feel 读取专用挂载点 — 启动序列第三步
+# =============================================================
+@mcp.custom_route("/feel-hook", methods=["GET"])
+async def feel_hook(request):
+    from starlette.responses import PlainTextResponse
+    try:
+        all_buckets = await bucket_mgr.list_all(include_archive=False)
+        feels = [b for b in all_buckets if b["metadata"].get("type") == "feel"]
+        feels.sort(key=lambda b: b["metadata"].get("created", ""), reverse=True)
+        recent_feels = feels[:10]
+
+        if not recent_feels:
+            return PlainTextResponse("")
+
+        parts = []
+        token_budget = 5000
+        for b in recent_feels:
+            meta = b["metadata"]
+            snippet = strip_wikilinks(b["content"][:300])
+            entry = (
+                f"[feel] {meta.get('name', b['id'])} "
+                f"V{meta.get('valence', 0.5):.1f}/A{meta.get('arousal', 0.3):.1f} "
+                f"{meta.get('created', '')[:10]}\n{snippet}"
+            )
+            entry_tokens = count_tokens_approx(entry)
+            if entry_tokens > token_budget:
+                break
+            parts.append(entry)
+            token_budget -= entry_tokens
+
+        body_text = "[Ombre Brain - Feel]\n" + "\n---\n".join(parts)
+        await _fire_webhook("feel_hook", {"surfaced": len(parts), "chars": len(body_text)})
+        return PlainTextResponse(body_text)
+    except Exception as e:
+        logger.warning(f"Feel hook failed: {e}")
+        return PlainTextResponse("")
+
+
+# =============================================================
+# /handoff-write endpoint: Write session handoff file
+# 写入会话交接文件，供下次 session 启动时快速恢复上下文
+# =============================================================
+def _handoff_path() -> str:
+    return os.path.join(config["buckets_dir"], ".handoff.md")
+
+
+@mcp.custom_route("/handoff-write", methods=["POST"])
+async def handoff_write(request):
+    from starlette.responses import JSONResponse
+    import datetime
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+
+    summary = body.get("summary", "")
+    emotional_state = body.get("emotional_state", "")
+    pending_tasks = body.get("pending_tasks", [])
+    preferences = body.get("preferences", [])
+
+    all_buckets = await bucket_mgr.list_all(include_archive=False)
+
+    pinned = [b for b in all_buckets if b["metadata"].get("pinned") or b["metadata"].get("protected")]
+    unresolved = [
+        b for b in all_buckets
+        if not b["metadata"].get("resolved", False)
+        and b["metadata"].get("type") not in ("permanent", "feel")
+        and not b["metadata"].get("pinned")
+        and not b["metadata"].get("protected")
+    ]
+    scored = sorted(unresolved, key=lambda b: decay_engine.calculate_score(b["metadata"]), reverse=True)
+
+    feels = [b for b in all_buckets if b["metadata"].get("type") == "feel"]
+    feels.sort(key=lambda b: b["metadata"].get("created", ""), reverse=True)
+
+    lines = [
+        "---",
+        f"written_at: \"{datetime.datetime.now(datetime.timezone.utc).isoformat()}\"",
+        "---",
+        "",
+    ]
+
+    if summary:
+        lines += ["## Session Summary", summary, ""]
+
+    if emotional_state:
+        lines += ["## Emotional State", emotional_state, ""]
+
+    if pinned:
+        lines += ["## Pinned Context"]
+        for b in pinned:
+            meta = b["metadata"]
+            name = meta.get("name", b["id"][:8])
+            lines.append(f"- [{b['id'][:8]}] {name}")
+        lines.append("")
+
+    if scored[:5]:
+        lines += ["## Active Unresolved (top 5)"]
+        for b in scored[:5]:
+            meta = b["metadata"]
+            name = meta.get("name", b["id"][:8])
+            score = decay_engine.calculate_score(meta)
+            lines.append(f"- [{b['id'][:8]}] {name} (score: {score:.2f})")
+        lines.append("")
+
+    if feels[:3]:
+        lines += ["## Recent Feels"]
+        for b in feels[:3]:
+            meta = b["metadata"]
+            created = meta.get("created", "")[:10]
+            lines.append(f"- ({created}) {strip_wikilinks(b['content'][:150])}")
+        lines.append("")
+
+    if pending_tasks:
+        lines += ["## Pending Tasks"]
+        for task in pending_tasks:
+            lines.append(f"- {task}")
+        lines.append("")
+
+    if preferences:
+        lines += ["## Noted Preferences"]
+        for pref in preferences:
+            lines.append(f"- {pref}")
+        lines.append("")
+
+    handoff_text = "\n".join(lines)
+    path = _handoff_path()
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(handoff_text)
+
+    logger.info(f"Handoff file written: {len(handoff_text)} chars")
+    return JSONResponse({"ok": True, "chars": len(handoff_text), "path": path})
+
+
+@mcp.custom_route("/handoff-read", methods=["GET"])
+async def handoff_read(request):
+    from starlette.responses import PlainTextResponse
+    path = _handoff_path()
+    if not os.path.exists(path):
+        return PlainTextResponse("")
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            content = f.read()
+        return PlainTextResponse(content)
+    except Exception:
         return PlainTextResponse("")
 
 
@@ -483,6 +646,10 @@ async def _merge_or_create(
     except Exception:
         pass
     return bucket_id, False
+
+
+# --- Wire up merge function for Telegram bot ---
+telegram_bot.set_merge_fn(_merge_or_create)
 
 
 # =============================================================
@@ -930,10 +1097,32 @@ async def grow(content: str) -> str:
         items = await dehydrator.digest(content)
     except Exception as e:
         logger.error(f"Diary digest failed / 日记整理失败: {e}")
-        return f"日记整理失败: {e}"
+        items = None
 
     if not items:
-        return "内容为空或整理失败。"
+        logger.info("grow: digest failed or empty, falling back to single-item hold")
+        try:
+            analysis = await dehydrator.analyze(content)
+        except Exception:
+            analysis = {
+                "domain": ["未分类"], "valence": 0.5, "arousal": 0.3,
+                "tags": [], "suggested_name": "",
+            }
+        try:
+            result_name, is_merged = await _merge_or_create(
+                content=content.strip(),
+                tags=analysis.get("tags", []),
+                importance=analysis.get("importance", 5) if isinstance(analysis.get("importance"), int) else 5,
+                domain=analysis.get("domain", ["未分类"]),
+                valence=analysis.get("valence", 0.5),
+                arousal=analysis.get("arousal", 0.3),
+                name=analysis.get("suggested_name", ""),
+            )
+            action = "合并" if is_merged else "新建"
+            return f"⚠️拆分失败，已整条保存\n{action} → {result_name} | {','.join(analysis.get('domain', []))} V{analysis.get('valence', 0.5):.1f}/A{analysis.get('arousal', 0.3):.1f}"
+        except Exception as e:
+            logger.error(f"grow fallback also failed / 回退保存也失败: {e}")
+            return f"⚠️拆分失败且回退保存也失败，请稍后用 hold 手动存储。原因: {e}"
 
     results = []
     created = 0
@@ -1905,6 +2094,42 @@ async def api_system_status(request):
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
+# =============================================================
+# Telegram Bot API endpoints
+# Telegram Bot 配置接口
+# =============================================================
+@mcp.custom_route("/api/telegram/status", methods=["GET"])
+async def api_telegram_status(request):
+    from starlette.responses import JSONResponse
+    err = _require_auth(request)
+    if err: return err
+    return JSONResponse({
+        "enabled": telegram_bot.enabled,
+        "configured": telegram_bot.is_configured,
+        "chat_id": telegram_bot.chat_id or "",
+        "push_interval_hours": telegram_bot.push_interval_hours,
+        "running": telegram_bot._running,
+    })
+
+
+@mcp.custom_route("/api/telegram/send", methods=["POST"])
+async def api_telegram_send(request):
+    from starlette.responses import JSONResponse
+    err = _require_auth(request)
+    if err: return err
+    if not telegram_bot.is_configured:
+        return JSONResponse({"error": "Telegram not configured"}, status_code=400)
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "Invalid JSON"}, status_code=400)
+    text = body.get("text", "")
+    if not text:
+        return JSONResponse({"error": "Missing text"}, status_code=400)
+    ok = await telegram_bot.send_message(text)
+    return JSONResponse({"ok": ok})
+
+
 # --- Entry point / 启动入口 ---
 if __name__ == "__main__":
     transport = config.get("transport", "stdio")
@@ -1937,6 +2162,24 @@ if __name__ == "__main__":
 
         # --- Add CORS middleware so remote clients (Cloudflare Tunnel / ngrok) can connect ---
         # --- 添加 CORS 中间件，让远程客户端（Cloudflare Tunnel / ngrok）能正常连接 ---
+        # --- Start Telegram bot if configured ---
+        async def _start_telegram():
+            await asyncio.sleep(5)
+            await telegram_bot.start()
+            # Keep the loop alive so polling/push tasks continue running
+            while telegram_bot._running:
+                await asyncio.sleep(1)
+
+        def _run_telegram():
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            loop.run_until_complete(_start_telegram())
+
+        if telegram_bot.enabled:
+            t_tg = threading.Thread(target=_run_telegram, daemon=True)
+            t_tg.start()
+            logger.info("Telegram bot thread started")
+
         if transport == "streamable-http":
             _app = mcp.streamable_http_app()
         else:

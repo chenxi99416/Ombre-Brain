@@ -27,11 +27,14 @@ def main():
 
     base_url = os.environ.get("OMBRE_HOOK_URL", "http://localhost:8000").rstrip("/")
 
-    # --- Step 1: Breath — surface unresolved memories ---
+    # --- Step 1: Breath — surface unresolved memories (includes handoff if recent) ---
     _call_endpoint(base_url, "/breath-hook")
 
     # --- Step 2: Dream — digest recent memories ---
     _call_endpoint(base_url, "/dream-hook")
+
+    # --- Step 3: Feel — read previous reflections ---
+    _call_endpoint(base_url, "/feel-hook")
 
 
 def _call_endpoint(base_url, path):

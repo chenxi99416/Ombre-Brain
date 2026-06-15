@@ -1,4 +1,7 @@
 {
+  "env": {
+    "OMBRE_HOOK_URL": "https://xiclaude.zeabur.app"
+  },
   "hooks": {
     "SessionStart": [
       {

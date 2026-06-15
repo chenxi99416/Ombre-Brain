@@ -15,6 +15,8 @@
 | `OMBRE_MODEL` | 否 | — | `OMBRE_DEHYDRATION_MODEL` 的别名（前者优先） |
 | `OMBRE_EMBEDDING_MODEL` | 否 | `gemini-embedding-001` | 向量嵌入模型名（覆盖 `embedding.model`） |
 | `OMBRE_EMBEDDING_BASE_URL` | 否 | — | 向量嵌入的 API Base URL（覆盖 `embedding.base_url`；留空则复用脱水配置） |
+| `OMBRE_TG_TOKEN` | 否 | — | Telegram Bot Token（从 @BotFather 获取） |
+| `OMBRE_TG_CHAT_ID` | 否 | — | Telegram Chat ID（首次给 bot 发消息时自动注册，也可手动填入） |
 
 ## 说明
 

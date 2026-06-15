@@ -94,3 +94,12 @@ wikilink:
   auto_top_k: 4
   min_keyword_len: 3
   exclude_keywords: []
+
+# --- Telegram Bot / Telegram 机器人 ---
+# Two-way bridge: she sends messages → stored as memories; system pushes notifications
+# 双向桥：她发消息→存为记忆；系统主动推送通知
+telegram:
+  # token: ""              # ⚠️ Use env var OMBRE_TG_TOKEN instead / 请使用环境变量 OMBRE_TG_TOKEN
+  # chat_id: ""            # Auto-registered on first message, or use env var OMBRE_TG_CHAT_ID / 首次发消息自动注册
+  push_interval_hours: 6   # How often to check for proactive push / 主动推送检查间隔（小时）
+  push_importance_min: 7   # Only push memories with importance >= this / 只推送重要度>=此值的记忆
