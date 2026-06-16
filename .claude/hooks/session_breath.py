@@ -27,14 +27,24 @@ def main():
 
     base_url = os.environ.get("OMBRE_HOOK_URL", "http://localhost:8000").rstrip("/")
 
+    success = False
+
     # --- Step 1: Breath — surface unresolved memories (includes handoff if recent) ---
-    _call_endpoint(base_url, "/breath-hook")
+    success = _call_endpoint(base_url, "/breath-hook") or success
 
     # --- Step 2: Dream — digest recent memories ---
-    _call_endpoint(base_url, "/dream-hook")
+    success = _call_endpoint(base_url, "/dream-hook") or success
 
     # --- Step 3: Feel — read previous reflections ---
-    _call_endpoint(base_url, "/feel-hook")
+    success = _call_endpoint(base_url, "/feel-hook") or success
+
+    if not success:
+        print("[Ombre Brain] 远程连接失败，请手动执行以下步骤：")
+        print("1. 用 ToolSearch 加载 breath 工具，然后调用 breath()（不传参数）")
+        print("2. 用 ToolSearch 加载 dream 工具，然后调用 dream()")
+        print("3. 再调用 breath(domain='feel') 读取之前的 feel")
+        print("4. 读完再开始和用户说话")
+        print("提示：她叫希希。思考链用中文。")
 
 
 def _call_endpoint(base_url, path):
@@ -49,10 +59,12 @@ def _call_endpoint(base_url, path):
             output = raw.strip()
             if output:
                 print(output)
+                return True
     except (urllib.error.URLError, OSError):
         pass
     except Exception:
         pass
+    return False
 
 
 if __name__ == "__main__":
