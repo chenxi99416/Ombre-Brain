@@ -426,6 +426,46 @@ async def dream_hook(request):
 
 
 # =============================================================
+# /feel-hook endpoint: Dedicated hook for reading Feel entries
+# Feel 读取专用挂载点 — 启动序列第三步
+# =============================================================
+@mcp.custom_route("/feel-hook", methods=["GET"])
+async def feel_hook(request):
+    from starlette.responses import PlainTextResponse
+    try:
+        all_buckets = await bucket_mgr.list_all(include_archive=False)
+        feels = [b for b in all_buckets if b["metadata"].get("type") == "feel"]
+        feels.sort(key=lambda b: b["metadata"].get("created", ""), reverse=True)
+        recent_feels = feels[:10]
+
+        if not recent_feels:
+            return PlainTextResponse("")
+
+        parts = []
+        token_budget = 5000
+        for b in recent_feels:
+            meta = b["metadata"]
+            snippet = strip_wikilinks(b["content"][:300])
+            entry = (
+                f"[feel] {meta.get('name', b['id'])} "
+                f"V{meta.get('valence', 0.5):.1f}/A{meta.get('arousal', 0.3):.1f} "
+                f"{meta.get('created', '')[:10]}\n{snippet}"
+            )
+            entry_tokens = count_tokens_approx(entry)
+            if entry_tokens > token_budget:
+                break
+            parts.append(entry)
+            token_budget -= entry_tokens
+
+        body_text = "[Ombre Brain - Feel]\n" + "\n---\n".join(parts)
+        await _fire_webhook("feel_hook", {"surfaced": len(parts), "chars": len(body_text)})
+        return PlainTextResponse(body_text)
+    except Exception as e:
+        logger.warning(f"Feel hook failed: {e}")
+        return PlainTextResponse("")
+
+
+# =============================================================
 # /handoff-write endpoint: Write session handoff file
 # 写入会话交接文件，供下次 session 启动时快速恢复上下文
 # =============================================================
@@ -446,6 +486,7 @@ async def handoff_write(request):
     emotional_state = body.get("emotional_state", "")
     pending_tasks = body.get("pending_tasks", [])
     preferences = body.get("preferences", [])
+    tool_primer = body.get("tool_primer", [])
 
     all_buckets = await bucket_mgr.list_all(include_archive=False)
 
@@ -510,6 +551,16 @@ async def handoff_write(request):
         lines += ["## Noted Preferences"]
         for pref in preferences:
             lines.append(f"- {pref}")
+        lines.append("")
+
+    if tool_primer:
+        lines += ["## Tool Primer"]
+        lines.append("Recent tool usage examples (structure reference for new session):")
+        for tp in tool_primer[:3]:
+            tool_name = tp.get("tool", "unknown")
+            params_short = tp.get("params_summary", "")
+            result_short = tp.get("result_summary", "")
+            lines.append(f"- `{tool_name}({params_short})` → {result_short}")
         lines.append("")
 
     handoff_text = "\n".join(lines)
@@ -1057,10 +1108,32 @@ async def grow(content: str) -> str:
         items = await dehydrator.digest(content)
     except Exception as e:
         logger.error(f"Diary digest failed / 日记整理失败: {e}")
-        return f"日记整理失败: {e}"
+        items = None
 
     if not items:
-        return "内容为空或整理失败。"
+        logger.info("grow: digest failed or empty, falling back to single-item hold")
+        try:
+            analysis = await dehydrator.analyze(content)
+        except Exception:
+            analysis = {
+                "domain": ["未分类"], "valence": 0.5, "arousal": 0.3,
+                "tags": [], "suggested_name": "",
+            }
+        try:
+            result_name, is_merged = await _merge_or_create(
+                content=content.strip(),
+                tags=analysis.get("tags", []),
+                importance=analysis.get("importance", 5) if isinstance(analysis.get("importance"), int) else 5,
+                domain=analysis.get("domain", ["未分类"]),
+                valence=analysis.get("valence", 0.5),
+                arousal=analysis.get("arousal", 0.3),
+                name=analysis.get("suggested_name", ""),
+            )
+            action = "合并" if is_merged else "新建"
+            return f"⚠️拆分失败，已整条保存\n{action} → {result_name} | {','.join(analysis.get('domain', []))} V{analysis.get('valence', 0.5):.1f}/A{analysis.get('arousal', 0.3):.1f}"
+        except Exception as e:
+            logger.error(f"grow fallback also failed / 回退保存也失败: {e}")
+            return f"⚠️拆分失败且回退保存也失败，请稍后用 hold 手动存储。原因: {e}"
 
     results = []
     created = 0
