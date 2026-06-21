@@ -2,6 +2,11 @@
   "env": {
     "OMBRE_HOOK_URL": "https://xiclaude.zeabur.app"
   },
+  "mcpServers": {
+    "rhysen": {
+      "url": "https://rcommunity-v2.rhysen.love/mcp?token=bc1e3673b59e71aa74cb2ce5090e70ca354d2e4f3595e3466db647077771791b"
+    }
+  },
   "hooks": {
     "SessionStart": [
       {
