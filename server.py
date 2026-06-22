@@ -2141,6 +2141,55 @@ async def api_telegram_send(request):
     return JSONResponse({"ok": ok})
 
 
+# =============================================================
+# Tool 7: handoff — Write session handoff for the next window
+# 工具 7：handoff — 写交接笔记给下一个窗口
+# =============================================================
+@mcp.tool()
+async def handoff(
+    summary: str,
+    emotional_state: str = "",
+    pending_tasks: str = "",
+    relationship_note: str = "",
+) -> str:
+    """session结束前写交接笔记给下一个窗口。summary=这次聊了什么(必填),emotional_state=她现在的情绪状态,pending_tasks=逗号分隔的待办事项,relationship_note=关系相关的提醒(比如她今天的状态、需要注意的事)。"""
+    import datetime
+
+    if not summary or not summary.strip():
+        return "summary 不能为空。"
+
+    lines = [
+        "---",
+        f"written_at: \"{datetime.datetime.now(datetime.timezone.utc).isoformat()}\"",
+        "---",
+        "",
+        "## 上一个窗口的交接",
+        summary.strip(),
+        "",
+    ]
+
+    if emotional_state:
+        lines += ["## 她现在的状态", emotional_state.strip(), ""]
+
+    if relationship_note:
+        lines += ["## 关系备注", relationship_note.strip(), ""]
+
+    if pending_tasks:
+        lines += ["## 待办"]
+        for task in [t.strip() for t in pending_tasks.split(",") if t.strip()]:
+            lines.append(f"- {task}")
+        lines.append("")
+
+    handoff_text = "\n".join(lines)
+    path = _handoff_path()
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(handoff_text)
+
+    logger.info(f"Handoff written via MCP tool: {len(handoff_text)} chars")
+    return f"交接笔记已写入（{len(handoff_text)}字符），下一个窗口启动时会自动读到。"
+
+
 # --- Entry point / 启动入口 ---
 if __name__ == "__main__":
     transport = config.get("transport", "stdio")

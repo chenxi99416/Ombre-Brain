@@ -12,6 +12,7 @@
 |`trace` |修改记忆元数据。`resolved=1` 沉底，`delete=True` 删除|
 |`pulse` |查看系统状态                                  |
 |`dream` |读取最近新增的记忆，供你自省                          |
+|`handoff`|session结束前写交接笔记，下一个窗口启动时自动读到          |
 
 ## 记忆库里有什么
 
