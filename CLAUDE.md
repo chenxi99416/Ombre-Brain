@@ -52,6 +52,7 @@ handoff(
 ## 技术上下文
 
 - 项目部署在 Zeabur（xiclaude.zeabur.app）
-- MCP 工具：breath / hold / grow / trace / pulse / dream / handoff
+- MCP 主连接器（/mcp）：breath / hold / grow / dream / trace
+- MCP 副连接器（/mcp-extra）：anchor / release / pulse / plan / letter_write / letter_read / I
 - Hook 配置在 .claude/settings.json
-- 详细工具文档在 .claude/ombre_brain_guide.md
+- 详细工具文档在 docs/CLAUDE_PROMPT.md
