@@ -393,17 +393,19 @@ async def _merge_or_create_inner(
         source_tool=source_tool,
         grow_batch_id=grow_batch_id,
     )
-    # --- 新桶生成 embedding；失败时返回警告（降级，不报错）---
-    # 允许降级：embedding 失败桶仍有效，仅丧失语义检索能力，设计上明确接受此降级
+    # iter 2.1+ 起 create() 内部已调用 _sync_embedding，此处无需重复生成。
+    # 只需从 embedding_engine 探测上次是否成功（检查 db 中是否有该 id）。
+    # 失败时返回警告（降级，不报错）——embedding 失败桶仍有效，仅丧失语义检索能力。
     embed_warn = ""
     try:
-        ok = await rt.embedding_engine.generate_and_store(bucket_id, content)
-        if not ok:
-            embed_warn = _EMBED_WARN
-            rt.logger.info(
-                f"op=merge_or_create phase=branch branch=embed_degrade bucket_id={bucket_id} "
-                f"reason=generate_returned_false"
-            )
+        if rt.embedding_engine and getattr(rt.embedding_engine, "enabled", False):
+            existing = await rt.embedding_engine.get_embedding(bucket_id)
+            if existing is None:
+                embed_warn = _EMBED_WARN
+                rt.logger.info(
+                    f"op=merge_or_create phase=branch branch=embed_degrade bucket_id={bucket_id} "
+                    f"reason=no_embedding_after_create"
+                )
     except Exception as _embed_exc:
         embed_warn = _EMBED_WARN
         rt.logger.info(

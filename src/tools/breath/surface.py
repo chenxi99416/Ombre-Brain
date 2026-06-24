@@ -82,7 +82,7 @@ async def surface_default(max_results: int, max_tokens: int, tag_filter: list) -
     unresolved = [
         b for b in all_buckets_non_anchor
         if not b["metadata"].get("resolved", False)
-        and b["metadata"].get("type") not in ("permanent", "feel", "plan", "letter", "self")
+        and b["metadata"].get("type") not in ("permanent", "feel", "plan", "letter", "self", "i")
         and not b["metadata"].get("pinned", False)
         and not b["metadata"].get("protected", False)
         and not b["metadata"].get("dont_surface", False)

@@ -210,14 +210,26 @@ Claude.ai                    Ombre Brain 服务器
 
 #### 步骤 3：工具分布（两个连接器）
 
-Ombre Brain 出于 claude.ai 的 5 工具限制将工具拆成两个端点：
+Ombre Brain 出于 claude.ai 的 5 工具限制将工具拆成 **两个 MCP 端点**：
 
 | 端点 | 工具 | 说明 |
 |---|---|---|
 | `/mcp` | `breath` `hold` `grow` `dream` `trace` | 高频工具，日常主要用这个 |
 | `/mcp-extra` | `anchor` `release` `pulse` `plan` `letter_write` `letter_read` | 低频工具 |
 
-在 Claude.ai 里分别添加 `/mcp` 和 `/mcp-extra` 两个连接器，即可使用全部 11 个工具。
+在 Claude.ai / 你的客户端里分别添加这 **两个连接器**，即可使用全部 11 个工具：
+
+```
+http(s)://<你的地址>:18001/mcp
+http(s)://<你的地址>:18001/mcp-extra
+```
+
+> **`<你的地址>` 填什么？**
+> - **本机访问**：`http://localhost:18001/mcp`（`deploy/docker-compose.yml` 默认映射到 18001 端口；Docker Hub 镜像默认 8000）
+> - **直连 VPS 公网 IP**：`http://你的服务器IP:18001/mcp`
+> - **用了 Cloudflare Tunnel / 自有域名**：把 `<你的地址>:18001` 整段换成你的网址，且通常不带端口、走 https，例如 `https://ombre.example.com/mcp` 和 `https://ombre.example.com/mcp-extra`
+>
+> 端口以你实际的端口映射为准（见 `docker-compose` 里的 `ports`）。两个端点共用同一进程、同一端口，只是路径不同。
 
 #### 步骤 4：Claude Code（终端）远程连接
 
@@ -230,6 +242,26 @@ claude mcp add ombre-brain python /path/to/server.py
 # 远程 HTTPS（需要 OAuth，同 Claude.ai 流程）
 claude mcp add ombre-brain --transport http https://ombre.example.com/mcp
 ```
+
+---
+
+### 方式三：接入自有前端 / 自定义客户端（关闭 OAuth）
+
+适合：想把 Ombre Brain 接进**自己的前端**、或用 **GPT / GLM / 自定义脚本**等不走 OAuth 流程的客户端调用 MCP 工具。
+
+默认情况下，HTTPS 连接 `/mcp` 会**强制 OAuth 2.1**（这是 Claude.ai 网页版的要求）。自定义客户端往往不实现这套流程，于是工具调用会被 401 卡住。把鉴权关掉即可免认证直连：
+
+```bash
+# 方式 A：环境变量（Docker 用户最方便，优先级最高）
+OMBRE_MCP_REQUIRE_AUTH=false
+
+# 方式 B：config.yaml
+mcp_require_auth: false
+```
+
+改完**重启服务**即可。之后 `/mcp` 与 `/mcp-extra` 不再要求 Bearer token，任何客户端都能直连。
+
+> ⚠️ **安全提醒**：关闭后，任何能访问到该端点的人都能读写记忆。请确保服务**不直接裸奔在公网**——放在内网、或在反代（nginx / Cloudflare Access 等）层另加一道鉴权。需要公网且用 Claude.ai 时，保持默认 `true` 走 OAuth 更安全。
 
 ---
 
@@ -355,6 +387,12 @@ docker compose -f deploy/docker-compose.yml up -d
 
 > 💾 **本地模型内存提醒**：bge-m3 加载后常驻约 2–3GB 内存。低配机器（<2GB 空闲内存）建议继续用云端；纯 CPU 即可推理，首条查询冷启动约 1–9s，之后 <0.5s。
 
+> 🧩 **用硅基流动（SiliconFlow）等 OpenAI 兼容云端向量化**：在 Dashboard ③ 引擎 → 向量化 区按下面填，**两个最常踩的坑都在这**：
+> - 格式：`OpenAI 兼容`
+> - Base URL：`https://api.siliconflow.cn/v1` —— **末尾必须带 `/v1`**，漏了会 404（page not found）
+> - Model：`BAAI/bge-m3` —— **必须带 `BAAI/` 前缀**，只写 `bge-m3` 会报 `Model does not exist`（免费，1024 维）
+> - 填完点「保存」，再点旁边的「**测试**」确认连得通（会直接显示成功维度或具体错误）。其它 OpenAI 兼容商（DeepSeek 等）同理：base_url 带正确后缀、model 用对方控制台里的完整名。
+
 **本地向量化怎么搭（一键，无需命令行）**
 
 本地模型跑在一个独立的 `ollama` 容器里（OB 不直接管它，所以最稳）。两步：
@@ -429,12 +467,32 @@ docker compose -f deploy/docker-compose.yml up -d
 | Claude.ai 添加 MCP 报「Couldn't register」 | OAuth 端点无法访问（通常是 Tunnel 未启动/域名错误） | 先确认 Dashboard 能正常访问，再添加 MCP |
 | OAuth 授权页正常弹出但密码输入后报错 | Dashboard 密码错误 | 使用 Dashboard 设置时的密码（不是 Cloudflare 密码） |
 | 连接成功但「no tools available」 | 连接到了 `/mcp-extra` 但期望 `/mcp`，或反之 | 检查 URL 末尾是 `/mcp` 还是 `/mcp-extra`；分别添加两个连接器 |
+| 主路由 `/mcp` 正常但副路由 `/mcp-extra` 502 / 连不上 | 反代或 Cloudflare Tunnel 只放行了 `/mcp`，没放行 `/mcp-extra`（OB 进程内两条路由是对称的，本机直连都返回 200） | 确认 Tunnel/Nginx 的 ingress 是按主机名整体转发到 `localhost:端口`（覆盖所有路径），不要只给 `/mcp` 单独建路径规则；两条都要能从公网访问 |
+| 向量化不生效 / 语义检索没结果（压缩却正常） | base_url 漏 `/v1`（→404）、model 漏 `BAAI/` 前缀（→Model does not exist），或在 Dashboard 改了 key 没重建引擎 | 用 Dashboard 向量化区的「测试」按钮自查；按上面「用硅基流动…」一节填对 base_url 与 model；错误详情见设置页错误面板（OB-E001） |
+| 自有前端 / GPT / GLM 调用 MCP 工具被 401 卡住 | 默认强制 OAuth，自定义客户端不走该流程 | 设 `OMBRE_MCP_REQUIRE_AUTH=false`（或 `config.yaml: mcp_require_auth: false`）后重启；详见「方式三：接入自有前端」 |
 | Token 过期后无法自动重连 | Bearer token 默认 30 天有效 | 在 Claude.ai connector 设置里重新授权 |
 | Dashboard 401 | 未登录 / 密码错 | 浏览器重新登录 |
 | `hold` / `grow` 报 API key 错误 | LLM key 未配置 | Dashboard → ③ 引擎 填入 Key 点「保存 Key」，立即热更新 |
 | 重启后记忆丢失 | Volume 没挂载 | 检查 docker-compose volume 配置 |
 | Tunnel 状态红色 / 连接失败 | Token 无效或 cloudflared 报错 | 展开 Dashboard 红色错误框查看 cloudflared 输出；重新从 Cloudflare Zero Trust 获取 token |
 | 隧道连接偶尔断 | Cloudflare Free 闲置超时 | 内置 keepalive 已缓解；可在 Cloudflare Tunnel 设置里调整超时 |
+
+---
+
+## 容易忽略的点 / Easy-to-miss
+
+新用户最常踩、但文档里分散各处的点，集中提醒一下：
+
+- **两个连接器都要加**：只加 `/mcp` 会少 6 个工具，`/mcp-extra` 也得单独加一遍。
+- **反代/隧道要整主机名转发**：Cloudflare Tunnel / Nginx 按域名整体转发到 `localhost:端口`，别只给 `/mcp` 建路径规则，否则 `/mcp-extra` 会 502 / 连不上。
+- **OpenAI 兼容向量化两个坑**：base_url 末尾要带 `/v1`（漏了 404）、model 要带完整前缀（如 `BAAI/bge-m3`，漏了报 Model does not exist）。填完用向量化区的「测试」按钮确认。
+- **改完 key / 配置点「保存」后再「测试」**：压缩和向量化各有独立的「测试」按钮，能用就用，别凭感觉。
+- **`dehydration.max_tokens` 别设太小**：Gemini 2.5 系列有思考 token 开销，太小会让 JSON 截断、记忆全标成「未分类」；用 `gemini-2.0-flash` 或把它设到 `4096` 以上。
+- **记忆数据要挂 volume**：不挂载（或 Render 免费层无持久磁盘）→ 重启记忆全丢。重要数据可再开 GitHub 同步兜底（embeddings.db 不上传，靠「重算所有向量」恢复）。
+- **切换向量化后端会全库重算**：云端 3072 维和本地 bge-m3 1024 维不通用，每次切换都会重算，别频繁来回切。
+- **热更新按钮看部署方式**：Docker（有 restart 策略）点完自动恢复；裸机/纯 Python 需要 systemd/pm2 等守护，否则更新后要手动重启。点之前先「导出记忆备份」。
+- **自有前端 / GPT / GLM 接入**：默认强制 OAuth，会卡住非 Claude 客户端；设 `OMBRE_MCP_REQUIRE_AUTH=false` 关掉（注意别裸奔公网）。
+- **首次访问先设密码**：设完之后所有 `/api/*` 都要登录；忘了密码可用设置里的安全问题急救。
 
 ---
 

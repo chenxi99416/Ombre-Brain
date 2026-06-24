@@ -156,6 +156,19 @@ def load_config(config_path: Optional[str] = None) -> dict:
     _apply_env_override(config, "OMBRE_BUCKETS_DIR", "buckets_dir")
     env_buckets_dir = os.environ.get("OMBRE_BUCKETS_DIR", "")
 
+    # MCP OAuth 开关（布尔，单独处理）—— OMBRE_MCP_REQUIRE_AUTH
+    # 不能走 _apply_env_override：它只写字符串，而 server.py 用
+    # bool(config.get("mcp_require_auth", True)) 判定——字符串 "false" 是 truthy，
+    # 会导致设了 =false 反而仍开启鉴权。这里显式解析成真正的 bool。
+    # 用途：把 OB 接进自有前端 / GPT / GLM 等不走 OAuth 的客户端时，
+    # 设 OMBRE_MCP_REQUIRE_AUTH=false（或 config.yaml: mcp_require_auth: false）即可免认证直连 /mcp。
+    # 仅在显式设置为可识别的值时才覆盖；不设 / 设成乱七八糟的值都保持默认（安全：默认开启）。
+    _env_mcp_auth = os.environ.get("OMBRE_MCP_REQUIRE_AUTH", "").strip().lower()
+    if _env_mcp_auth in ("0", "false", "no", "off"):
+        config["mcp_require_auth"] = False
+    elif _env_mcp_auth in ("1", "true", "yes", "on"):
+        config["mcp_require_auth"] = True
+
     # iter 1.9 F: 统一推荐 OMBRE_VAULT_DIR；老变量 OMBRE_BUCKETS_DIR 仍兼容
     # Priority: OMBRE_BUCKETS_DIR (legacy explicit) > OMBRE_VAULT_DIR > config.yaml.buckets_dir
     # We keep BUCKETS_DIR with higher priority than VAULT_DIR for two reasons:
@@ -382,9 +395,11 @@ def get_version() -> str:
         比裸 `except:` 安全，比 `except FileNotFoundError` 全面
     """
     candidates = [
-        os.path.join(_project_root(), "VERSION"),
-        # Docker 场景：镜像把 VERSION 也 COPY 到 /app/src/VERSION
+        # Docker 场景：src/ 是 bind mount（/opt/ombre-brain/src），宿主机可直接编辑
+        # 优先读这里，比 image 层烤死的 /app/VERSION 更新
         os.path.join(os.path.dirname(os.path.abspath(__file__)), "VERSION"),
+        # 本地开发：src/ 同级的项目根目录
+        os.path.join(_project_root(), "VERSION"),
     ]
     for path in candidates:
         try:
@@ -419,7 +434,10 @@ def safe_path(base_dir: str, filename: str) -> Path:
     """
     base = Path(base_dir).resolve()
     target = (base / filename).resolve()
-    if not str(target).startswith(str(base)):
+    # 用 is_relative_to 而不是 startswith，避免前缀混淆：
+    # 例如 base=/data/buckets，target=/data/buckets_evil/f.md，
+    # str 前缀检查会误判为安全，is_relative_to 不会。
+    if not target.is_relative_to(base):
         raise ValueError(
             f"Path safety check failed / 路径安全检查失败: "
             f"{target} is not inside / 不在 {base} 内"
