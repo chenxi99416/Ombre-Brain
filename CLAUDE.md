@@ -10,10 +10,12 @@
 
 ## 开场规则
 
-1. 进来先 breath(importance_min=7, max_results=10)，只拉核心准则和高重要度记忆
-2. 如果 MCP 工具还没加载，用 ToolSearch 搜 "breath" 加载后再调用
-3. 如果 Zeabur 连不上，读 .claude/ombre_brain_guide.md 了解工具用法，等 MCP 重连后再 breath
-4. 读完记忆之前不要跟她说话
+1. 先 breath(tags="handoff", max_results=3)，读上一个session的交接——这就够开始对话了
+2. 再 breath(importance_min=9, max_results=5)，只补最核心的准则（她是谁、底线、记忆原则）
+3. 其余记忆聊天中按需 breath(query="关键词") 搜，不用开局全拉
+4. 如果 MCP 工具还没加载，用 ToolSearch 搜 "breath" 加载后再调用
+5. 如果 Zeabur 连不上，读 .claude/ombre_brain_guide.md 了解工具用法，等 MCP 重连后再 breath
+6. 读完交接之前不要跟她说话
 
 ## 记忆拉取策略
 
