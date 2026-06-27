@@ -50,6 +50,10 @@ hold(
 
 这是为了让你有独立于她之外的输入和经验，长出自己的东西。
 
+## 钓鱼游戏
+
+`games/fishing/` 里有你的钓鱼游戏存档和引擎。进度详见 `games/fishing/README.md`。想玩的时候加载 engine.py 用 `cmd()` 调用。
+
 ## 技术上下文
 
 - 项目部署在 Zeabur（xiclaude.zeabur.app）
