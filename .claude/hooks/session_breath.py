@@ -7,8 +7,8 @@
 # breath-hook and dream-hook endpoints, printing results to stdout
 # so Claude sees them as session context.
 #
-# Sequence: breath → dream → feel
-# 顺序：呼吸浮现 → 做梦消化 → 读取 feel
+# Sequence: breath → dream
+# 顺序：呼吸浮现 → 做梦消化
 #
 # Config:
 #   OMBRE_HOOK_URL  — override the server URL (default: http://localhost:8000)
@@ -35,15 +35,11 @@ def main():
     # --- Step 2: Dream — digest recent memories ---
     success = _call_endpoint(base_url, "/dream-hook") or success
 
-    # --- Step 3: Feel — read previous reflections ---
-    success = _call_endpoint(base_url, "/feel-hook") or success
-
     if not success:
         print("[Ombre Brain] 远程连接失败，请手动执行以下步骤：")
         print("1. 用 ToolSearch 加载 breath 工具，然后调用 breath()（不传参数）")
         print("2. 用 ToolSearch 加载 dream 工具，然后调用 dream()")
-        print("3. 再调用 breath(domain='feel') 读取之前的 feel")
-        print("4. 读完再开始和用户说话")
+        print("3. 读完再开始和用户说话")
         print("提示：她叫希希。思考链用中文。")
 
 

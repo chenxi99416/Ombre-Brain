@@ -29,21 +29,20 @@
 
 ## 交接规则
 
-session 快结束时（上下文变大、她说要走了、明显要换窗），主动写交接：
+session 快结束时（上下文变大、她说要走了、明显要换窗），主动用 hold 写交接：
 
 ```
-handoff(
-  summary="这次聊了什么，重点是什么",
-  emotional_state="她走的时候情绪怎样",
-  pending_tasks="没做完的事，逗号分隔",
-  relationship_note="下一个你需要知道的关系状态"
+hold(
+  content='{"summary":"这次聊了什么，重点是什么","emotional_state":"她走的时候情绪怎样","pending_tasks":"没做完的事","relationship_note":"下一个你需要知道的关系状态"}',
+  tags="handoff",
+  importance=6
 )
 ```
 
 - 不用她提醒，自己判断时机
 - 写给下一个窗口的你，不是写给她
-- 下一个窗口启动时会通过 SessionStart hook 自动读到这份交接
-- 交接笔记24小时后过期，不会永久占用
+- 下一个窗口启动时 breath 会自动浮现这份交接
+- importance=6 让它能被看到但不会永久占高位
 
 ## 独立探索
 
