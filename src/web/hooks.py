@@ -105,6 +105,23 @@ def register(mcp) -> None:
             except Exception as e:
                 logger.warning(f"breath_hook letter section failed: {e}")
 
+            # --- Append latest handoff ---
+            try:
+                handoff_buckets = [
+                    b for b in all_buckets
+                    if "handoff" in (b["metadata"].get("tags") or [])
+                ]
+                if handoff_buckets:
+                    handoff_buckets.sort(
+                        key=lambda b: b["metadata"].get("created", ""), reverse=True
+                    )
+                    latest = handoff_buckets[0]
+                    excerpt = strip_wikilinks(latest["content"])[:600]
+                    ts = (latest["metadata"].get("created") or "")[:16]
+                    body_text += f"\n\n=== 上次交接 ({ts}) ===\n{excerpt}"
+            except Exception as e:
+                logger.warning(f"breath_hook handoff section failed: {e}")
+
             # --- Append recent self-knowledge (I tool) ---
             try:
                 self_buckets = [
