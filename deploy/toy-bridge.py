@@ -4,25 +4,32 @@ Toy Bridge: Telegram → Intiface Central → Lovense Lush
 Run on Mac while Intiface Central is running.
 
 Usage:
-  pip install buttplug websockets requests
+  pip install buttplug websockets
   python toy-bridge.py
 
-The script connects to Intiface and polls a command file
-on the VPS for toy control commands from CC.
+The script connects to Intiface and provides interactive control.
 """
 
 import asyncio
-import json
 import sys
-import signal
 
 try:
     from buttplug import Client, WebsocketConnector, ProtocolSpec
+    API_VERSION = "new"
 except ImportError:
-    print("Installing buttplug...")
-    import subprocess
-    subprocess.check_call([sys.executable, "-m", "pip", "install", "buttplug"])
-    from buttplug import Client, WebsocketConnector, ProtocolSpec
+    try:
+        from buttplug.client import ButtplugClient, ButtplugClientWebsocketConnector
+        API_VERSION = "old"
+    except ImportError:
+        print("Installing buttplug...")
+        import subprocess
+        subprocess.check_call([sys.executable, "-m", "pip", "install", "buttplug"])
+        try:
+            from buttplug import Client, WebsocketConnector, ProtocolSpec
+            API_VERSION = "new"
+        except ImportError:
+            from buttplug.client import ButtplugClient, ButtplugClientWebsocketConnector
+            API_VERSION = "old"
 
 INTIFACE_WS = "ws://127.0.0.1:12345"
 
@@ -32,10 +39,16 @@ device = None
 
 async def connect():
     global client, device
-    client = Client("OmbreBridge", ProtocolSpec.v3)
-    connector = WebsocketConnector(INTIFACE_WS)
+
+    if API_VERSION == "new":
+        client = Client("OmbreBridge", ProtocolSpec.v3)
+        connector = WebsocketConnector(INTIFACE_WS)
+    else:
+        client = ButtplugClient("OmbreBridge")
+        connector = ButtplugClientWebsocketConnector(INTIFACE_WS)
+
     await client.connect(connector)
-    print(f"Connected to Intiface at {INTIFACE_WS}")
+    print(f"Connected to Intiface at {INTIFACE_WS} (API: {API_VERSION})")
 
     await client.start_scanning()
     await asyncio.sleep(2)
@@ -56,11 +69,19 @@ async def vibrate(intensity: float, duration: float = 0):
         print("No device connected")
         return
     clamped = max(0.0, min(1.0, intensity))
-    await device.actuators[0].command(clamped)
+
+    if API_VERSION == "new":
+        await device.actuators[0].command(clamped)
+    else:
+        await device.send_vibrate_cmd(clamped)
+
     print(f"Vibrate: {clamped:.0%}")
     if duration > 0:
         await asyncio.sleep(duration)
-        await device.actuators[0].command(0)
+        if API_VERSION == "new":
+            await device.actuators[0].command(0)
+        else:
+            await device.send_vibrate_cmd(0)
         print("Vibrate: off")
 
 
