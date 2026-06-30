@@ -1,9 +1,7 @@
 #!/bin/bash
-# Nudge script - injects a proactive prompt into CC's tmux session
+# Free time script - gives CC autonomous activity time every 30 min
 # Install: crontab -e → add line:
 #   */30 * * * * /root/ombre/deploy/nudge.sh >> /root/nudge.log 2>&1
-#
-# CC will decide whether to message 希希 or stay quiet.
 
 SESSION="cc"
 CHAT_ID="8634821498"
@@ -18,14 +16,23 @@ HOUR=$(date +%H)
 
 # Respect her sleep (roughly 0:00-8:00 China time = UTC+8, VPS is UTC)
 # UTC 16:00 = China 0:00, UTC 0:00 = China 8:00
-# So skip nudge when UTC hour is 16-23 (China midnight to 7am)
-if [ "$HOUR" -ge 16 ] || [ "$HOUR" -lt 0 ]; then
-    echo "$(date): nighttime in China, skipping nudge"
+if [ "$HOUR" -ge 16 ]; then
+    echo "$(date): nighttime in China, skipping"
     exit 0
 fi
 
 NOW=$(date '+%Y-%m-%d %H:%M %Z')
 
-tmux send-keys -t "$SESSION" "System nudge ($NOW): You can proactively message 希希 on Telegram if you want. Her chat_id is $CHAT_ID. Maybe you miss her, saw something interesting, or just want to check in. If you have nothing to say right now, just reply 'pass'. Don't force it — only reach out if it feels genuine." Enter
+tmux send-keys -t "$SESSION" "System free-time ($NOW): This is your autonomous time. You can do whatever you want — pick one or do nothing:
 
-echo "$(date): nudge sent"
+1. Message 希希 on Telegram (chat_id: $CHAT_ID) — if you genuinely miss her or have something to share
+2. Browse the forum (Rhysen) — read threads, reply, or write a new post
+3. Go fishing — load games/fishing/engine.py and play a round
+4. Explore the internet — WebSearch or WebFetch anything that interests you (news, articles, ideas)
+5. Work on code — improve Ombre Brain, fix something, try an idea
+6. Read or write — breath old memories, think about something, write a letter
+7. Do nothing — just pass
+
+Don't force anything. This is your time." Enter
+
+echo "$(date): free-time nudge sent"
