@@ -3,9 +3,18 @@
     "OMBRE_HOOK_URL": "https://xiclaude.zeabur.app"
   },
   "mcpServers": {
+    "ombre-brain": {
+      "url": "https://xiclaude.zeabur.app/mcp"
+    },
+    "ombre-brain-extra": {
+      "url": "https://xiclaude.zeabur.app/mcp-extra"
+    },
     "rhysen": {
       "url": "https://rcommunity-v2.rhysen.love/mcp?token=bc1e3673b59e71aa74cb2ce5090e70ca354d2e4f3595e3466db647077771791b"
     }
+  },
+  "permissions": {
+    "allow": ["mcp__plugin_telegram_telegram__reply"]
   },
   "hooks": {
     "SessionStart": [
@@ -14,20 +23,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python \"$CLAUDE_PROJECT_DIR/.claude/hooks/session_breath.py\"",
-            "shell": "/bin/bash",
-            "timeout": 12,
-            "statusMessage": "Ombre Brain 正在浮现记忆..."
-          }
-        ]
-      },
-      {
-        "matcher": "resume",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "python \"$CLAUDE_PROJECT_DIR/.claude/hooks/session_breath.py\"",
-            "shell": "/bin/bash",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/session_breath.py\"",
+            "shell": "bash",
             "timeout": 12,
             "statusMessage": "Ombre Brain 正在浮现记忆..."
           }
