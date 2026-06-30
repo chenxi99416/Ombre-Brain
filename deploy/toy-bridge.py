@@ -5,8 +5,8 @@ Run on Mac while Intiface Central is running.
 
 Usage:
   pip install buttplug websockets
-  python toy-bridge.py                          # interactive only
-  python toy-bridge.py --relay http://IP:8080   # interactive + remote control
+  python toy-bridge.py                          # interactive + remote via Zeabur
+  python toy-bridge.py --relay http://IP:8080   # use custom relay URL
 """
 
 import asyncio
@@ -34,6 +34,7 @@ except ImportError:
             API_VERSION = "old"
 
 INTIFACE_WS = "ws://127.0.0.1:12345"
+DEFAULT_RELAY = "https://xiclaude.zeabur.app/api/toy/cmd"
 
 client = None
 device = None
@@ -212,11 +213,13 @@ async def interactive():
 
 
 async def main():
-    relay_url = None
+    relay_url = DEFAULT_RELAY
     if "--relay" in sys.argv:
         idx = sys.argv.index("--relay")
         if idx + 1 < len(sys.argv):
             relay_url = sys.argv[idx + 1]
+    if "--no-relay" in sys.argv:
+        relay_url = None
 
     if not await connect():
         return
