@@ -1,17 +1,19 @@
 #!/usr/bin/env python3
 """
-Toy Bridge: Telegram → Intiface Central → Lovense Lush
+Toy Bridge: Intiface Central → Lovense Lush
 Run on Mac while Intiface Central is running.
 
 Usage:
   pip install buttplug websockets
-  python toy-bridge.py
-
-The script connects to Intiface and provides interactive control.
+  python toy-bridge.py                          # interactive only
+  python toy-bridge.py --relay http://IP:8080   # interactive + remote control
 """
 
 import asyncio
 import sys
+import json
+import urllib.request
+import urllib.error
 
 try:
     from buttplug import Client, WebsocketConnector, ProtocolSpec
@@ -64,7 +66,6 @@ async def connect():
 
 
 async def vibrate(intensity: float, duration: float = 0):
-    """Set vibration intensity (0.0 to 1.0). Duration in seconds (0 = stay on)."""
     if not device:
         print("No device connected")
         return
@@ -85,16 +86,7 @@ async def vibrate(intensity: float, duration: float = 0):
         print("Vibrate: off")
 
 
-async def pattern(steps: list):
-    """Play a pattern: [(intensity, duration), ...]"""
-    for intensity, duration in steps:
-        await vibrate(intensity)
-        await asyncio.sleep(duration)
-    await vibrate(0)
-
-
 async def pulse(count=3, intensity=0.8, on_time=0.5, off_time=0.3):
-    """Pulse pattern."""
     for _ in range(count):
         await vibrate(intensity)
         await asyncio.sleep(on_time)
@@ -103,7 +95,6 @@ async def pulse(count=3, intensity=0.8, on_time=0.5, off_time=0.3):
 
 
 async def wave():
-    """Gradually increase then decrease."""
     for i in range(0, 11):
         await vibrate(i / 10)
         await asyncio.sleep(0.3)
@@ -112,14 +103,75 @@ async def wave():
         await asyncio.sleep(0.3)
 
 
+async def escalate():
+    """Slow build-up pattern."""
+    for level in [0.1, 0.15, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8]:
+        await vibrate(level)
+        await asyncio.sleep(1.5)
+    await vibrate(0)
+
+
+async def tease():
+    """Random-feeling teasing pattern."""
+    steps = [0.2, 0.0, 0.3, 0.0, 0.15, 0.0, 0.5, 0.0, 0.1, 0.4, 0.0]
+    for s in steps:
+        await vibrate(s)
+        await asyncio.sleep(0.6)
+    await vibrate(0)
+
+
+async def execute_command(cmd: dict):
+    """Execute a remote command dict."""
+    action = cmd.get("action", "")
+    if action == "vibrate":
+        intensity = float(cmd.get("intensity", 0.5))
+        duration = float(cmd.get("duration", 0))
+        await vibrate(intensity, duration)
+    elif action == "pulse":
+        count = int(cmd.get("count", 3))
+        intensity = float(cmd.get("intensity", 0.8))
+        await pulse(count=count, intensity=intensity)
+    elif action == "wave":
+        await wave()
+    elif action == "escalate":
+        await escalate()
+    elif action == "tease":
+        await tease()
+    elif action == "off":
+        await vibrate(0)
+    elif action == "none":
+        pass
+    else:
+        print(f"Unknown remote action: {action}")
+
+
+async def poll_relay(relay_url: str):
+    """Background task: poll relay server for commands."""
+    print(f"Polling relay at {relay_url}")
+    while True:
+        try:
+            req = urllib.request.Request(relay_url)
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                cmds = json.loads(resp.read())
+                for cmd in cmds:
+                    print(f"Remote: {cmd}")
+                    await execute_command(cmd)
+        except urllib.error.URLError:
+            pass
+        except Exception as e:
+            print(f"Relay error: {e}")
+        await asyncio.sleep(1.5)
+
+
 async def interactive():
-    """Interactive mode for testing."""
-    print("\n=== Toy Bridge Interactive Mode ===")
+    print("\n=== Toy Bridge ===")
     print("Commands:")
-    print("  v <0-100>     Set vibration (e.g., 'v 50' for 50%)")
-    print("  pulse [n]     Pulse n times (default 3)")
-    print("  wave          Gradual wave pattern")
-    print("  off           Stop vibration")
+    print("  v <0-100>     Set vibration %")
+    print("  pulse [n]     Pulse n times")
+    print("  wave          Gradual wave")
+    print("  escalate      Slow build-up")
+    print("  tease         Teasing pattern")
+    print("  off           Stop")
     print("  quit          Exit")
     print()
 
@@ -133,9 +185,9 @@ async def interactive():
 
         if not cmd:
             continue
-        elif cmd == "quit" or cmd == "q":
+        elif cmd in ("quit", "q"):
             break
-        elif cmd == "off" or cmd == "0":
+        elif cmd in ("off", "0"):
             await vibrate(0)
         elif cmd.startswith("v "):
             try:
@@ -149,17 +201,31 @@ async def interactive():
             await pulse(count=n)
         elif cmd == "wave":
             await wave()
+        elif cmd == "escalate":
+            await escalate()
+        elif cmd == "tease":
+            await tease()
         else:
-            print(f"Unknown command: {cmd}")
+            print(f"Unknown: {cmd}")
 
     await vibrate(0)
 
 
 async def main():
+    relay_url = None
+    if "--relay" in sys.argv:
+        idx = sys.argv.index("--relay")
+        if idx + 1 < len(sys.argv):
+            relay_url = sys.argv[idx + 1]
+
     if not await connect():
         return
 
-    await interactive()
+    tasks = [asyncio.create_task(interactive())]
+    if relay_url:
+        tasks.append(asyncio.create_task(poll_relay(relay_url)))
+
+    await tasks[0]
 
     if client:
         await client.disconnect()
