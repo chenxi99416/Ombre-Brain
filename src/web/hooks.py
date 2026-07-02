@@ -46,7 +46,7 @@ def register(mcp) -> None:
             scored = sorted(unresolved, key=lambda b: sh.decay_engine.calculate_score(b["metadata"]), reverse=True)
 
             parts = []
-            token_budget = 10000
+            token_budget = 4000
             for b in pinned:
                 summary = await sh.dehydrator.dehydrate(strip_wikilinks(b["content"]), {k: v for k, v in b["metadata"].items() if k != "tags"})
                 parts.append(f"📌 [核心准则] {summary}")
@@ -59,8 +59,8 @@ def register(mcp) -> None:
                 pool = candidates[1:min(20, len(candidates))]
                 random.shuffle(pool)
                 candidates = top1 + pool + candidates[min(20, len(candidates)):]
-            # Hard cap: max 20 surfacing buckets in hook
-            candidates = candidates[:20]
+            # Hard cap: max 8 surfacing buckets in hook (rest via on-demand breath)
+            candidates = candidates[:8]
 
             for b in candidates:
                 if token_budget <= 0:
@@ -96,7 +96,7 @@ def register(mcp) -> None:
                             continue
                         d = letter["metadata"].get("letter_date") or letter["metadata"].get("created", "")[:10]
                         title = letter["metadata"].get("title") or letter["metadata"].get("name", "")
-                        excerpt = strip_wikilinks(letter["content"])[:400]
+                        excerpt = strip_wikilinks(letter["content"])[:200]
                         letter_lines.append(
                             f"💌 [{tag}] {d}{(' · ' + title) if title else ''}\n{excerpt}"
                         )
@@ -116,7 +116,7 @@ def register(mcp) -> None:
                         key=lambda b: b["metadata"].get("created", ""), reverse=True
                     )
                     latest = handoff_buckets[0]
-                    excerpt = strip_wikilinks(latest["content"])[:600]
+                    excerpt = strip_wikilinks(latest["content"])[:300]
                     ts = (latest["metadata"].get("created") or "")[:16]
                     body_text += f"\n\n=== 上次交接 ({ts}) ===\n{excerpt}"
             except Exception as e:
@@ -173,7 +173,7 @@ def register(mcp) -> None:
                 and not b["metadata"].get("dont_surface", False)
             ]
             candidates.sort(key=lambda b: b["metadata"].get("created", ""), reverse=True)
-            recent = candidates[:10]
+            recent = candidates[:5]
 
             if not recent:
                 return PlainTextResponse("")
