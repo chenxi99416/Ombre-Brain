@@ -216,6 +216,9 @@ class Dehydrator:
         dehy_cfg = config.get("dehydration", {})
         self.api_key = dehy_cfg.get("api_key", "")
         self.model = dehy_cfg.get("model", _DEFAULT_MODEL)
+        # DeepSeek retired "deepseek-chat" in mid-2026; auto-migrate.
+        if self.model == "deepseek-chat":
+            self.model = "deepseek-v4-flash"
         self.base_url = dehy_cfg.get("base_url", _DEFAULT_BASE_URL)
         self.max_tokens = dehy_cfg.get("max_tokens", _DEFAULT_MAX_TOKENS)
         self.temperature = dehy_cfg.get("temperature", _DEFAULT_TEMPERATURE)
