@@ -23,8 +23,13 @@ import subprocess
 import time
 from pathlib import Path
 
-PROJECT_DIR = "/root/.claude/projects/-root-ombre"
-ARCHIVE_DIR = "/root/.claude/projects/-root-ombre/archive"
+CANDIDATE_PROJECT_DIRS = [
+    "/root/.claude/projects/-root-ombre",
+    "/root/.claude/projects/-root",
+]
+
+PROJECT_DIR = None  # resolved dynamically by find_active_session()
+ARCHIVE_DIR = None
 
 # Forge: cold restart, keep less
 FORGE_RETAIN_TOKENS = 80000
@@ -44,11 +49,17 @@ SKIP_TYPES = {"queue-operation", "file-history-snapshot", "last-prompt", "ai-tit
 
 
 def find_active_session():
-    """Find the most recently modified transcript."""
-    jsonls = glob.glob(os.path.join(PROJECT_DIR, "*.jsonl"))
-    if not jsonls:
+    """Find the most recently modified transcript across all candidate project dirs."""
+    global PROJECT_DIR, ARCHIVE_DIR
+    all_jsonls = []
+    for d in CANDIDATE_PROJECT_DIRS:
+        all_jsonls.extend(glob.glob(os.path.join(d, "*.jsonl")))
+    if not all_jsonls:
         return None
-    return max(jsonls, key=os.path.getmtime)
+    best = max(all_jsonls, key=os.path.getmtime)
+    PROJECT_DIR = os.path.dirname(best)
+    ARCHIVE_DIR = os.path.join(PROJECT_DIR, "archive")
+    return best
 
 
 def read_jsonl(path):
@@ -514,9 +525,15 @@ if __name__ == "__main__":
 
     session_path = None
     if session_id:
-        session_path = os.path.join(PROJECT_DIR, f"{session_id}.jsonl")
-        if not os.path.exists(session_path):
-            print(f"Session not found: {session_path}")
+        for d in CANDIDATE_PROJECT_DIRS:
+            candidate = os.path.join(d, f"{session_id}.jsonl")
+            if os.path.exists(candidate):
+                session_path = candidate
+                PROJECT_DIR = d
+                ARCHIVE_DIR = os.path.join(d, "archive")
+                break
+        if not session_path:
+            print(f"Session not found in any project dir: {session_id}")
             sys.exit(1)
 
     if mode_status:

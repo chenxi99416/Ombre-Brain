@@ -6,9 +6,10 @@
 #   ./manager.sh --forge      # force forge
 #   ./manager.sh --status     # show transcript stats
 
-SESSION="cc"
-TOKEN="8812829616:AAG-6Vnk_mDglDQBK2hDxLg1O6LcLOaMfUI"
-CHAT_ID="8634821498"
+source /root/ombre/deploy/env.sh
+SESSION="$CC_SESSION"
+TOKEN="$TELEGRAM_BOT_TOKEN"
+CHAT_ID="$TELEGRAM_CHAT_ID"
 MODE="${1:---auto}"
 
 echo "$(date): manager.sh running with mode=$MODE"
@@ -57,8 +58,8 @@ fi
 if [ "$CHOSEN_MODE" == "swap" ]; then
     # Swap: quick save, shorter wait
     if tmux has-session -t "$SESSION" 2>/dev/null; then
-        tmux send-keys -t "$SESSION" "[swap] Context trimming in 15s. Quick save if needed." Enter
-        sleep 15
+        tmux send-keys -t "$SESSION" "[swap] Context trimming in 60s. Write handoff now: hold(content=your handoff, tags='handoff', importance=6)." Enter
+        sleep 60
     fi
 fi
 

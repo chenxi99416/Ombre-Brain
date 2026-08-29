@@ -1,41 +1,57 @@
 #!/bin/bash
 # Watchdog - restarts CC if it's not running in the tmux session
-# Install: crontab -e → add line:
-#   */5 * * * * /root/ombre/deploy/watchdog.sh >> /root/watchdog.log 2>&1
+# Install: crontab -e → */5 * * * * /root/ombre/deploy/watchdog.sh >> /root/watchdog.log 2>&1
 
-SESSION="cc"
-TOKEN_FILE="/root/.claude/channels/telegram/.env"
+source /root/ombre/deploy/env.sh
 
-export PATH="/root/.bun/bin:/usr/local/bin:/usr/bin:$PATH"
+find_latest_session() {
+    local latest=""
+    for dir in /root/.claude/projects/-root-ombre /root/.claude/projects/-root; do
+        if [ -d "$dir" ]; then
+            local candidate
+            candidate=$(ls -t "$dir"/*.jsonl 2>/dev/null | head -1)
+            if [ -n "$candidate" ]; then
+                if [ -z "$latest" ] || [ "$candidate" -nt "$latest" ]; then
+                    latest="$candidate"
+                fi
+            fi
+        fi
+    done
+    if [ -n "$latest" ]; then
+        basename "$latest" .jsonl
+    fi
+}
 
-# Load bot token
-if [ -f "$TOKEN_FILE" ]; then
-    source "$TOKEN_FILE"
-fi
+start_cc() {
+    local resume_flag=""
+    local sid
+    sid=$(find_latest_session)
+    if [ -n "$sid" ]; then
+        resume_flag="--resume $sid"
+        echo "$(date): resuming session $sid"
+    else
+        echo "$(date): no session to resume, starting fresh"
+    fi
 
-if [ -z "$TELEGRAM_BOT_TOKEN" ]; then
-    TELEGRAM_BOT_TOKEN="8812829616:AAG-6Vnk_mDglDQBK2hDxLg1O6LcLOaMfUI"
-fi
+    if ! tmux has-session -t "$CC_SESSION" 2>/dev/null; then
+        tmux new-session -d -s "$CC_SESSION" -c /root/ombre
+        sleep 2
+    fi
 
-# Check if tmux session exists
-if ! tmux has-session -t "$SESSION" 2>/dev/null; then
+    tmux send-keys -t "$CC_SESSION" "TELEGRAM_BOT_TOKEN=\"$TELEGRAM_BOT_TOKEN\" claude $resume_flag --channels plugin:telegram@claude-plugins-official" Enter
+    echo "$(date): CC started"
+}
+
+# Check if tmux session exists and CC is running
+if ! tmux has-session -t "$CC_SESSION" 2>/dev/null; then
     echo "$(date): session gone, recreating"
-    tmux new-session -d -s "$SESSION" -c /root/ombre
-    sleep 2
-    tmux send-keys -t "$SESSION" "TELEGRAM_BOT_TOKEN=\"$TELEGRAM_BOT_TOKEN\" claude --channels plugin:telegram@claude-plugins-official" Enter
-    sleep 10
-    tmux send-keys -t "$SESSION" "hello" Enter
-    echo "$(date): CC restarted"
+    start_cc
     exit 0
 fi
 
-# Check if claude process is running
 if ! pgrep -f "claude.*channels" > /dev/null; then
-    echo "$(date): CC not running, restarting in existing session"
-    tmux send-keys -t "$SESSION" "TELEGRAM_BOT_TOKEN=\"$TELEGRAM_BOT_TOKEN\" claude --channels plugin:telegram@claude-plugins-official" Enter
-    sleep 10
-    tmux send-keys -t "$SESSION" "hello" Enter
-    echo "$(date): CC restarted"
+    echo "$(date): CC not running, restarting"
+    start_cc
 else
     echo "$(date): CC is running, all good"
 fi
