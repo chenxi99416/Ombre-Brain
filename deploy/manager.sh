@@ -63,7 +63,7 @@ if [ "$CHOSEN_MODE" == "swap" ]; then
     fi
 fi
 
-# Kill existing CC
+# Kill existing CC — tmux session AND any daemon-spawned background processes
 if tmux has-session -t "$SESSION" 2>/dev/null; then
     tmux send-keys -t "$SESSION" C-c
     sleep 2
@@ -71,6 +71,11 @@ if tmux has-session -t "$SESSION" 2>/dev/null; then
     sleep 1
     tmux kill-session -t "$SESSION"
 fi
+# Kill any lingering claude processes with --channels (daemon-spawned, not in tmux)
+pkill -f "claude.*--channels" 2>/dev/null
+sleep 2
+pkill -f "bg-pty-host.*claude" 2>/dev/null
+sleep 1
 
 # Start new session with --resume
 tmux new-session -d -s "$SESSION" -c /root/ombre

@@ -44,9 +44,20 @@ if [ -n "$DISK_PCT" ] && [ "$DISK_PCT" -gt 90 ] 2>/dev/null; then
     ISSUES="${ISSUES}\n- 磁盘使用率 ${DISK_PCT}%"
 fi
 
-# 4. Check claude process
-if ! pgrep -f "claude --" > /dev/null; then
+# 4. Check claude process — alive AND responsive
+if ! pgrep -f "claude.exe" > /dev/null; then
     ISSUES="${ISSUES}\n- claude 进程不在了"
+else
+    # Check for zombie: process alive but transcript stale while messages pending
+    LATEST_JSONL=$(ls -t /root/.claude/projects/-root-ombre/*.jsonl 2>/dev/null | head -1)
+    if [ -n "$LATEST_JSONL" ]; then
+        MTIME=$(stat -c %Y "$LATEST_JSONL" 2>/dev/null)
+        NOW=$(date +%s)
+        AGE_MIN=$(( (NOW - MTIME) / 60 ))
+        if [ "$AGE_MIN" -gt 30 ] && [ -n "$PENDING" ] && [ "$PENDING" -gt 0 ] 2>/dev/null; then
+            ISSUES="${ISSUES}\n- claude 进程疑似僵尸（transcript ${AGE_MIN}分钟没更新，${PENDING} 条消息堆积）"
+        fi
+    fi
 fi
 
 if [ -n "$ISSUES" ]; then
