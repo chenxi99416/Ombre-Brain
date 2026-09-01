@@ -45,7 +45,7 @@ if [ -n "$DISK_PCT" ] && [ "$DISK_PCT" -gt 90 ] 2>/dev/null; then
 fi
 
 # 4. Check claude process — alive AND responsive
-if ! pgrep -f "claude --" > /dev/null; then
+if ! pgrep -f "claude --" > /dev/null && ! pgrep -f "claude.exe" > /dev/null; then
     ISSUES="${ISSUES}\n- claude 进程不在了"
 else
     # Check for zombie: process alive but transcript stale while messages pending
