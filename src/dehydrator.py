@@ -510,6 +510,17 @@ class Dehydrator:
         self._set_cached_summary(content, result)
         return self._format_output(result, metadata)
 
+    def dehydrate_fast(self, content: str, metadata: Optional[dict] = None) -> str:
+        """不调 API 的脱水：短文原样，长文有缓存用缓存、没缓存截断原文。给 hook 用，保证秒回。"""
+        if not content or not content.strip():
+            return "（空记忆 / empty memory）"
+        if count_tokens_approx(content) < _DEHYDRATE_MIN_TOKENS:
+            return self._format_output(content, metadata)
+        cached = self._get_cached_summary(content)
+        if cached:
+            return self._format_output(cached, metadata)
+        return self._format_output(content[:_DEHYDRATE_FALLBACK_CHARS], metadata)
+
     # ---------------------------------------------------------
     # Merge: blend new content into existing bucket
     # 合并：将新内容揉入已有桶，保持体积恒定

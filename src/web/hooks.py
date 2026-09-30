@@ -66,7 +66,7 @@ def register(mcp) -> None:
             for b in candidates:
                 if token_budget <= 0:
                     break
-                summary = await sh.dehydrator.dehydrate(strip_wikilinks(b["content"]), {k: v for k, v in b["metadata"].items() if k != "tags"})
+                summary = sh.dehydrator.dehydrate_fast(strip_wikilinks(b["content"]), {k: v for k, v in b["metadata"].items() if k != "tags"})
                 summary_tokens = count_tokens_approx(summary)
                 if summary_tokens > token_budget:
                     break

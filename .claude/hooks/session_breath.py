@@ -50,7 +50,7 @@ def _call_endpoint(base_url, path):
         method="GET",
     )
     try:
-        with urllib.request.urlopen(req, timeout=8) as response:
+        with urllib.request.urlopen(req, timeout=15) as response:
             raw = response.read().decode("utf-8")
             output = raw.strip()
             if output:
