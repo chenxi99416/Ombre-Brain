@@ -55,6 +55,7 @@ _API_TIMEOUT_SECONDS = 60.0
 
 # --- 该多长才需要压缩（低于该 token 数直接走原文）---
 _DEHYDRATE_MIN_TOKENS = 100
+_DEHYDRATE_FALLBACK_CHARS = 600  # 脱水失败时原文截断长度
 
 # --- 各 API 调用的内容截断上限（防 prompt token 超范围）---
 _DEHYDRATE_INPUT_LIMIT = 3000
@@ -501,6 +502,10 @@ class Dehydrator:
         self._require_api()
 
         result = await self._api_dehydrate(content)
+        # --- API 返回空（额度/网络失败）时退回原文，且不缓存空结果 ---
+        if not result or not result.strip():
+            logger.warning("Dehydrate API returned empty; falling back to raw content")
+            return self._format_output(content[:_DEHYDRATE_FALLBACK_CHARS], metadata)
         # --- Cache the result ---
         self._set_cached_summary(content, result)
         return self._format_output(result, metadata)
@@ -566,6 +571,24 @@ class Dehydrator:
     # 把脱水结果包装成带桶名、标签、情感坐标的可读文本
     # ---------------------------------------------------------
 
+    @staticmethod
+    def _render_summary(parsed: dict) -> str:
+        """把脱水 JSON 渲染成可读文本。"""
+        lines = []
+        summary = parsed.get("summary")
+        if isinstance(summary, str) and summary.strip():
+            lines.append(summary.strip())
+        facts = parsed.get("core_facts")
+        if isinstance(facts, list):
+            lines.extend(f"· {f}" for f in facts if isinstance(f, str) and f.strip())
+        todos = parsed.get("todos")
+        if isinstance(todos, list) and todos:
+            lines.append("没做完：" + "；".join(str(t) for t in todos if str(t).strip()))
+        if not lines:
+            parsed = {k: v for k, v in parsed.items() if k != "keywords"}
+            return json.dumps(parsed, ensure_ascii=False)
+        return "\n".join(lines)
+
     def _format_output(self, content: str, metadata: Optional[dict] = None) -> str:
         """
         Format dehydrated result into context-injectable text.
@@ -591,12 +614,11 @@ class Dehydrator:
                 header += " [已消化]"
             header += "\n"
 
-        # 去掉 keywords 字段：LLM 返回的 JSON 里 keywords 是内部索引用途，不暴露给上下文
+        # JSON 摘要渲染成人话：summary 一行 + 事实逐条，丢掉 keywords/emotion_state 等内部字段
         try:
             parsed = json.loads(content)
-            if isinstance(parsed, dict) and "keywords" in parsed:
-                parsed.pop("keywords", None)
-                content = json.dumps(parsed, ensure_ascii=False)
+            if isinstance(parsed, dict):
+                content = self._render_summary(parsed)
         except Exception:
             pass  # 非 JSON 内容直接透传
         content = re.sub(r'\[\[([^\]]+)\]\]', r'\1', content)
