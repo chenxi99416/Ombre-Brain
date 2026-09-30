@@ -50,7 +50,7 @@ def register(mcp) -> None:
             for b in pinned:
                 # 核心准则是亲手写的短文，原样展示，不过 LLM 脱水
                 summary = sh.dehydrator._format_output(strip_wikilinks(b["content"]), {k: v for k, v in b["metadata"].items() if k != "tags"})
-                parts.append(f"📌 [核心准则] {summary}")
+                parts.append(f"📌 [我们聊过的事] {summary}")
                 token_budget -= count_tokens_approx(summary)
 
             # Diversity: top-1 fixed + shuffle rest from top-20

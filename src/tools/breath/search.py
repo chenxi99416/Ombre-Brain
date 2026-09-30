@@ -102,7 +102,7 @@ async def surface_search(
             await rt.bucket_mgr.touch(bucket["id"])
             meta_b = bucket["metadata"]
             if meta_b.get("pinned") or meta_b.get("protected") or meta_b.get("type") == "permanent":
-                summary = f"📌 [核心准则] [bucket_id:{bucket['id']}] {summary}"
+                summary = f"📌 [我们聊过的事] [bucket_id:{bucket['id']}] {summary}"
             elif bucket.get("vector_match"):
                 summary = f"[语义关联] [bucket_id:{bucket['id']}] {summary}"
             else:

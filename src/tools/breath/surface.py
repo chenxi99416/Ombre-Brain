@@ -67,12 +67,12 @@ async def surface_default(max_results: int, max_tokens: int, tag_filter: list) -
         try:
             clean_meta = {k: v for k, v in b["metadata"].items() if k != "tags"}
             summary = await rt.dehydrator.dehydrate(strip_wikilinks(b["content"]), clean_meta)
-            pinned_results.append(f"📌 [核心准则] [bucket_id:{b['id']}] {summary}")
+            pinned_results.append(f"📌 [我们聊过的事] [bucket_id:{b['id']}] {summary}")
         except Exception as e:
             rt.logger.warning(f"Failed to dehydrate pinned bucket / 钉选桶脱水失败: {e}")
             # 降级：直接展示原文片段，确保核心准则永远可见
             fallback = strip_wikilinks(b["content"])[:300].strip() or "（空记忆）"
-            pinned_results.append(f"📌 [核心准则] [bucket_id:{b['id']}] {fallback}")
+            pinned_results.append(f"📌 [我们聊过的事] [bucket_id:{b['id']}] {fallback}")
 
     # --- iter 2.0: anchor 桶在默认浮现模式的 *未解决池* 不出现（anchor 是坐标系不是浮现对象）---
     # anchor 过滤仅作用于 unresolved 候选，不影响 pinned 提取（上方已完成）。
@@ -286,7 +286,7 @@ async def surface_default(max_results: int, max_tokens: int, tag_filter: list) -
 
     parts = []
     if pinned_results:
-        parts.append("=== 核心准则 ===\n" + "\n---\n".join(pinned_results))
+        parts.append("=== 我们聊过的事 ===\n" + "\n---\n".join(pinned_results))
     if dynamic_results:
         parts.append("=== 浮现记忆 ===\n" + "\n---\n".join(dynamic_results))
     if passive_results:
