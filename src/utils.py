@@ -472,3 +472,18 @@ def now_iso() -> str:
     返回当前时间的 ISO 格式字符串。
     """
     return datetime.now().isoformat(timespec="seconds")
+
+
+HANDOFF_SURFACE_DAYS = 3
+
+
+def is_stale_handoff(meta: dict, days: int = HANDOFF_SURFACE_DAYS) -> bool:
+    """交接写完超过 days 天就不再主动浮现（仍可搜索）。"""
+    if "handoff" not in (meta.get("tags") or []):
+        return False
+    try:
+        created = datetime.fromisoformat(str(meta.get("created", "")))
+    except (ValueError, TypeError):
+        return False
+    created = created.replace(tzinfo=None)
+    return (datetime.now() - created).days >= days

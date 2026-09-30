@@ -28,7 +28,7 @@ import time
 from datetime import datetime, timezone, timedelta
 
 from .. import _runtime as rt
-from utils import strip_wikilinks, count_tokens_approx
+from utils import strip_wikilinks, count_tokens_approx, is_stale_handoff
 
 # U-07 fix: throttle the sampling-fallback INFO log to once per 5 minutes.
 # 库小且 sampling=ON 时此分支每次 breath 都触发，原本会刷屏；改为 ≥300s
@@ -87,6 +87,7 @@ async def surface_default(max_results: int, max_tokens: int, tag_filter: list) -
         and not b["metadata"].get("protected", False)
         and not b["metadata"].get("dont_surface", False)
         and _bucket_has_tags(b["metadata"], tag_filter)
+        and (tag_filter or not is_stale_handoff(b["metadata"]))
     ]
 
     rt.logger.info(

@@ -505,7 +505,7 @@ class Dehydrator:
         # --- API 返回空（额度/网络失败）时退回原文，且不缓存空结果 ---
         if not result or not result.strip():
             logger.warning("Dehydrate API returned empty; falling back to raw content")
-            return self._format_output(content[:_DEHYDRATE_FALLBACK_CHARS], metadata)
+            return self._format_output(content, metadata, max_chars=_DEHYDRATE_FALLBACK_CHARS)
         # --- Cache the result ---
         self._set_cached_summary(content, result)
         return self._format_output(result, metadata)
@@ -519,7 +519,7 @@ class Dehydrator:
         cached = self._get_cached_summary(content)
         if cached:
             return self._format_output(cached, metadata)
-        return self._format_output(content[:_DEHYDRATE_FALLBACK_CHARS], metadata)
+        return self._format_output(content, metadata, max_chars=_DEHYDRATE_FALLBACK_CHARS)
 
     # ---------------------------------------------------------
     # Merge: blend new content into existing bucket
@@ -600,7 +600,8 @@ class Dehydrator:
             return json.dumps(parsed, ensure_ascii=False)
         return "\n".join(lines)
 
-    def _format_output(self, content: str, metadata: Optional[dict] = None) -> str:
+    def _format_output(self, content: str, metadata: Optional[dict] = None,
+                       max_chars: int = 0) -> str:
         """
         Format dehydrated result into context-injectable text.
         将脱水结果格式化为可注入上下文的文本。
@@ -633,6 +634,8 @@ class Dehydrator:
         except Exception:
             pass  # 非 JSON 内容直接透传
         content = re.sub(r'\[\[([^\]]+)\]\]', r'\1', content)
+        if max_chars and len(content) > max_chars:
+            content = content[:max_chars] + "…"
         return f"{header}{content}"
 
     # ---------------------------------------------------------

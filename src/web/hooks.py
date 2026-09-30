@@ -22,9 +22,9 @@ from . import _shared as sh
 logger = sh.logger
 
 try:
-    from utils import strip_wikilinks, count_tokens_approx  # type: ignore
+    from utils import strip_wikilinks, count_tokens_approx, is_stale_handoff  # type: ignore
 except ImportError:  # pragma: no cover
-    from ..utils import strip_wikilinks, count_tokens_approx  # type: ignore
+    from ..utils import strip_wikilinks, count_tokens_approx, is_stale_handoff  # type: ignore
 
 
 def register(mcp) -> None:
@@ -42,7 +42,8 @@ def register(mcp) -> None:
                           and b["metadata"].get("type") not in ("permanent", "feel", "plan", "letter", "self", "i")
                           and not b["metadata"].get("pinned")
                           and not b["metadata"].get("protected")
-                          and not b["metadata"].get("dont_surface", False)]
+                          and not b["metadata"].get("dont_surface", False)
+                          and not is_stale_handoff(b["metadata"])]
             scored = sorted(unresolved, key=lambda b: sh.decay_engine.calculate_score(b["metadata"]), reverse=True)
 
             parts = []
