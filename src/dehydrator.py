@@ -55,7 +55,8 @@ _API_TIMEOUT_SECONDS = 60.0
 
 # --- 该多长才需要压缩（低于该 token 数直接走原文）---
 _DEHYDRATE_MIN_TOKENS = 100
-_DEHYDRATE_FALLBACK_CHARS = 600  # 脱水失败时原文截断长度
+_DEHYDRATE_FALLBACK_CHARS = 600  # hook 快速路径没缓存时原文截断长度
+_DEHYDRATE_API_FALLBACK_CHARS = 3000  # breath 路径 API 脱水失败时原文截断长度（有 max_tokens 预算兜底）
 
 # --- 各 API 调用的内容截断上限（防 prompt token 超范围）---
 _DEHYDRATE_INPUT_LIMIT = 3000
@@ -68,6 +69,8 @@ _PLAN_JUDGE_INPUT_LIMIT = 1500  # plan 与 new event 各一份
 _ANALYZE_MAX_TOKENS = 4096      # Gemini 2.5 thinking 会消耗大量 token，需留足余量
 _DIGEST_MAX_TOKENS = 8192       # 日记拆条内容多，thinking + 输出都需要足量空间
 _PLAN_JUDGE_MAX_TOKENS = 2048   # thinking 模型下 200 token 完全不够
+_DEHYDRATE_MAX_TOKENS = 4096    # 同上：默认 1024 会被 thinking 吃光，content 返回空
+_MERGE_MAX_TOKENS = 4096        # 同上
 _PLAN_JUDGE_TEMPERATURE = 0.0   # 判定需确定性
 _DIGEST_TEMPERATURE = 0.0       # 拆条需确定性
 
@@ -363,7 +366,14 @@ class Dehydrator:
         )
         if not response.choices:
             return ""
-        return response.choices[0].message.content or ""
+        content = response.choices[0].message.content or ""
+        if not content.strip():
+            # 空 content 多半是 thinking 把 max_tokens 吃光（finish_reason=length），留条日志好查
+            logger.warning(
+                f"LLM returned empty content / 返回空内容: model={self.model} "
+                f"finish_reason={response.choices[0].finish_reason} usage={getattr(response, 'usage', None)}"
+            )
+        return content
 
     async def _chat_gemini(
         self,
@@ -505,7 +515,7 @@ class Dehydrator:
         # --- API 返回空（额度/网络失败）时退回原文，且不缓存空结果 ---
         if not result or not result.strip():
             logger.warning("Dehydrate API returned empty; falling back to raw content")
-            return self._format_output(content, metadata, max_chars=_DEHYDRATE_FALLBACK_CHARS)
+            return self._format_output(content, metadata, max_chars=_DEHYDRATE_API_FALLBACK_CHARS)
         # --- Cache the result ---
         self._set_cached_summary(content, result)
         return self._format_output(result, metadata)
@@ -558,7 +568,11 @@ class Dehydrator:
         Call LLM API for intelligent dehydration (via OpenAI-compatible client).
         调用 LLM API 执行智能脱水。
         """
-        return await self._chat(DEHYDRATE_PROMPT, content[:_DEHYDRATE_INPUT_LIMIT])
+        return await self._chat(
+            DEHYDRATE_PROMPT,
+            content[:_DEHYDRATE_INPUT_LIMIT],
+            max_tokens=max(self.max_tokens, _DEHYDRATE_MAX_TOKENS),
+        )
 
     # ---------------------------------------------------------
     # API call: merge
@@ -573,7 +587,11 @@ class Dehydrator:
             f"旧记忆：\n{old_content[:_MERGE_INPUT_LIMIT]}\n\n"
             f"新内容：\n{new_content[:_MERGE_INPUT_LIMIT]}"
         )
-        return await self._chat(MERGE_PROMPT, user_msg)
+        return await self._chat(
+            MERGE_PROMPT,
+            user_msg,
+            max_tokens=max(self.max_tokens, _MERGE_MAX_TOKENS),
+        )
 
     # ---------------------------------------------------------
     # Output formatting
@@ -635,7 +653,8 @@ class Dehydrator:
             pass  # 非 JSON 内容直接透传
         content = re.sub(r'\[\[([^\]]+)\]\]', r'\1', content)
         if max_chars and len(content) > max_chars:
-            content = content[:max_chars] + "…"
+            # 真截了就明说，别让读的人以为这就是全文
+            content = f"{content[:max_chars]}…\n（原文共 {len(content)} 字，这里只有前 {max_chars} 字，后面被截断了）"
         return f"{header}{content}"
 
     # ---------------------------------------------------------
