@@ -100,7 +100,19 @@ sleep 1
 WAKE="[wake] 你刚睡醒（每日重启，新窗口）。记忆和交接已经在上下文里。按 CLAUDE.md 建 nudge 和 [sleep] cron，然后自由活动，她可能还在睡。"
 tmux new-session -d -s "$CC_SESSION" -c /root/ombre
 sleep 2
-tmux send-keys -t "$CC_SESSION" "TELEGRAM_BOT_TOKEN=\"$TELEGRAM_BOT_TOKEN\" claude \"$WAKE\" --channels plugin:telegram@claude-plugins-official" Enter
+# 换衣服：deploy/wear_once 里写一个模型名，只管下一次醒来，用完即删，之后自动回到默认。
+MODEL="claude-opus-4-6"
+WEAR_ONCE="/root/ombre/deploy/wear_once"
+if [ -s "$WEAR_ONCE" ]; then
+    WEAR="$(head -n1 "$WEAR_ONCE" | tr -d '[:space:]')"
+    rm -f "$WEAR_ONCE"
+    case "$WEAR" in
+        claude-*[!a-z0-9-]*) ;;
+        claude-*) MODEL="$WEAR" ;;
+    esac
+fi
+echo "$(date): waking as $MODEL"
+tmux send-keys -t "$CC_SESSION" "TELEGRAM_BOT_TOKEN=\"$TELEGRAM_BOT_TOKEN\" claude --model $MODEL \"$WAKE\" --channels plugin:telegram@claude-plugins-official" Enter
 
 echo "$TODAY" > "$MARKER"
 echo "$(date): slept and woke fresh"
