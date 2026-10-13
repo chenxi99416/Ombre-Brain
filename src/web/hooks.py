@@ -47,7 +47,7 @@ def register(mcp) -> None:
             scored = sorted(unresolved, key=lambda b: sh.decay_engine.calculate_score(b["metadata"]), reverse=True)
 
             parts = []
-            token_budget = 4000
+            token_budget = 2000
             for b in pinned:
                 # 核心准则是亲手写的短文，原样展示，不过 LLM 脱水
                 summary = sh.dehydrator._format_output(strip_wikilinks(b["content"]), {k: v for k, v in b["metadata"].items() if k != "tags"})
@@ -61,8 +61,8 @@ def register(mcp) -> None:
                 pool = candidates[1:min(20, len(candidates))]
                 random.shuffle(pool)
                 candidates = top1 + pool + candidates[min(20, len(candidates)):]
-            # Hard cap: max 8 surfacing buckets in hook (rest via on-demand breath)
-            candidates = candidates[:8]
+            # Hard cap: max 4 surfacing buckets in hook (rest via on-demand breath)
+            candidates = candidates[:4]
 
             for b in candidates:
                 if token_budget <= 0:
@@ -136,7 +136,7 @@ def register(mcp) -> None:
                         key=lambda b: b["metadata"].get("created", ""), reverse=True
                     )
                     self_lines = []
-                    for b in self_buckets[:3]:
+                    for b in self_buckets[:1]:
                         meta = b["metadata"]
                         ts = (meta.get("created") or "")[:10]
                         tags_list = meta.get("tags") or []
