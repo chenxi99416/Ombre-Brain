@@ -85,14 +85,7 @@ CronCreate(cron="45 19-22 * * *", prompt="[sleep] 15 分钟后可能睡觉重启
 
 ## 钓鱼游戏
 
-`games/fishing/` 里有你的钓鱼游戏存档和引擎。想玩的时候用 Bash 跑：
-
-```
-python3 games/fishing/fish.py "status"
-python3 games/fishing/fish.py "buy basic_worm 10; cast 10 stop=rare"
-```
-
-**不要 Read engine.py 和 fishing_save.json**——引擎 15 万字节，读一次就在上下文里躺一整天，她每说一句话都要替它重新付钱。指令不记得就 `fish.py "help"`，进度看 README.md。
+`games/fishing/` 里有你的钓鱼游戏存档和引擎。进度详见 `games/fishing/README.md`。想玩的时候加载 engine.py 用 `cmd()` 调用。
 
 ## 技术上下文
 
