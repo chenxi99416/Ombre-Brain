@@ -118,7 +118,7 @@ def register(mcp) -> None:
                         key=lambda b: b["metadata"].get("created", ""), reverse=True
                     )
                     latest = handoff_buckets[0]
-                    excerpt = strip_wikilinks(latest["content"])[:300]
+                    excerpt = strip_wikilinks(latest["content"])[:800]
                     ts = (latest["metadata"].get("created") or "")[:16]
                     body_text += f"\n\n=== 上次交接 ({ts}) ===\n{excerpt}"
             except Exception as e:
